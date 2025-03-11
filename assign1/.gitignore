@@ -1,4 +1,5 @@
 src/matrixproduct
+src/data_analysis
 src/singlecore_results.txt
 src/multicore_results.txt
 src/multicore_matrixproduct

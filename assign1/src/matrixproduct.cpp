@@ -178,6 +178,7 @@ void init_papi() {
               << " REVISION: " << PAPI_VERSION_REVISION(retval) << "\n";
 }
 
+#ifndef DATA_ANALYSIS_BUILD
 int main(int argc, char *argv[]) {
     char c;
     int lin, col, blockSize;
@@ -255,3 +256,4 @@ int main(int argc, char *argv[]) {
     if (ret != PAPI_OK)
         std::cout << "FAIL destroy" << endl;
 }
+#endif
