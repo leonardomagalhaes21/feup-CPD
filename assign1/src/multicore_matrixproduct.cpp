@@ -92,6 +92,7 @@ void OnMultLineParallelInnerFor(int m_ar, int m_br) {
     cout << endl;
 }
 
+#ifndef DATA_ANALYSIS_BUILD
 int main(int argc, char *argv[]) {
     int lin, col, choice;
     cout << "Dimensions: lins=cols ? ";
@@ -116,3 +117,4 @@ int main(int argc, char *argv[]) {
 
     return 0;
 }
+#endif
