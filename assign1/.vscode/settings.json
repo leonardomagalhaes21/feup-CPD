@@ -1,0 +1,10 @@
+{
+  "C_Cpp.errorSquiggles": "disabled",
+  "files.associations": {
+    "*.js": "javascript",
+    "*.tpl": "php",
+    "*.pcss": "css",
+    ".env*": "dotenv",
+    "ostream": "cpp"
+  }
+}
