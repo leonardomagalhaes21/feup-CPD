@@ -1,6 +1,5 @@
 #include <omp.h>
 
-#include <chrono>
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
@@ -8,7 +7,11 @@
 
 using namespace std;
 
+#define SYSTEMTIME clock_t
+
 void OnMultLineParallelOuterFor(int m_ar, int m_br) {
+    char st[100];
+
     auto pha = vector<double>(m_ar * m_ar, 1.0);
     auto phb = vector<double>(m_ar * m_ar, 1.0);
     auto phc = vector<double>(m_ar * m_ar, 0.0);
@@ -23,7 +26,7 @@ void OnMultLineParallelOuterFor(int m_ar, int m_br) {
 
     int i, k, j;
 
-    auto start = chrono::system_clock::now();
+    double start = omp_get_wtime();
 
 #pragma omp parallel for private(i, k, j)
     for (i = 0; i < m_ar; i++) {
@@ -34,10 +37,9 @@ void OnMultLineParallelOuterFor(int m_ar, int m_br) {
         }
     }
 
-    auto end = chrono::system_clock::now();
-    chrono::duration<double> elapsed_seconds = end - start;
-
-    cout << "Time: " << elapsed_seconds.count() << " seconds" << endl;
+    double end = omp_get_wtime();
+    sprintf(st, "Time: %3.3f seconds\n", end - start);
+    cout << st;
 
     // display 10 elements of the result matrix to verify correctness
     cout << "Result matrix: " << endl;
@@ -49,6 +51,8 @@ void OnMultLineParallelOuterFor(int m_ar, int m_br) {
 }
 
 void OnMultLineParallelInnerFor(int m_ar, int m_br) {
+    char st[100];
+
     auto pha = vector<double>(m_ar * m_ar, 1.0);
     auto phb = vector<double>(m_ar * m_ar, 1.0);
     auto phc = vector<double>(m_ar * m_ar, 0.0);
@@ -63,7 +67,7 @@ void OnMultLineParallelInnerFor(int m_ar, int m_br) {
 
     int i, k, j;
 
-    auto start = chrono::system_clock::now();
+    double start = omp_get_wtime();
 
 #pragma omp parallel private(i, k, j)
     for (i = 0; i < m_ar; i++) {
@@ -75,10 +79,9 @@ void OnMultLineParallelInnerFor(int m_ar, int m_br) {
         }
     }
 
-    auto end = chrono::system_clock::now();
-    chrono::duration<double> elapsed_seconds = end - start;
-
-    cout << "Time: " << elapsed_seconds.count() << " seconds" << endl;
+    double end = omp_get_wtime();
+    sprintf(st, "Time: %3.3f seconds\n", end - start);
+    cout << st;
 
     // display 10 elements of the result matrix to verify correctness
     cout << "Result matrix: " << endl;
