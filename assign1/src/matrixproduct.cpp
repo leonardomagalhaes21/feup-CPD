@@ -1,17 +1,13 @@
-#include <papi.h>
 #include <stdio.h>
-#include <time.h>
-
-#include <cstdlib>
-#include <iomanip>
 #include <iostream>
+#include <chrono>
+#include "benchmark_result.h"
+#include "papi_utils.h"
 
 using namespace std;
 
-#define SYSTEMTIME clock_t
-
-void OnMult(int m_ar, int m_br) {
-    SYSTEMTIME Time1, Time2;
+BenchmarkResult OnMult(int m_ar, int m_br, int EventSet) {
+    long long values[2];
 
     char st[100];
     double temp;
@@ -31,7 +27,10 @@ void OnMult(int m_ar, int m_br) {
         for (j = 0; j < m_br; j++)
             phb[i * m_br + j] = (double)(i + 1);
 
-    Time1 = clock();
+
+    int ret = PAPI_start(EventSet);
+    if(ret != PAPI_OK) handle_error(ret);
+    auto start = chrono::high_resolution_clock::now();
 
     for (i = 0; i < m_ar; i++) {
         for (j = 0; j < m_br; j++) {
@@ -43,8 +42,16 @@ void OnMult(int m_ar, int m_br) {
         }
     }
 
-    Time2 = clock();
-    sprintf(st, "Time: %3.3f seconds\n", (double)(Time2 - Time1) / CLOCKS_PER_SEC);
+    auto end = chrono::high_resolution_clock::now();
+    ret = PAPI_stop(EventSet, values);
+    if(ret != PAPI_OK) handle_error(ret);
+
+    printf("L1 DCM: %lld \n", values[0]);
+    printf("L2 DCM: %lld \n", values[1]);
+
+    double elapsedTime = chrono::duration<double>(end - start).count();
+
+    sprintf(st, "Time: %3.3f seconds\n", elapsedTime);
     cout << st;
 
     // display 10 elements of the result matrix tto verify correctness
@@ -58,11 +65,21 @@ void OnMult(int m_ar, int m_br) {
     free(pha);
     free(phb);
     free(phc);
+    ret = PAPI_reset(EventSet);
+    if (ret != PAPI_OK)
+        std::cout << "FAIL reset" << endl;
+
+    BenchmarkResult result;
+    result.timeSeconds = elapsedTime;
+    result.gflops = computeGFLOPS(m_ar, result.timeSeconds);
+    result.papiL1DCM = values[0];
+    result.papiL2DCM = values[1];
+    return result;
 }
 
 // add code here for line x line matriz multiplication
-void OnMultLine(int m_ar, int m_br) {
-    SYSTEMTIME Time1, Time2;
+BenchmarkResult OnMultLine(int m_ar, int m_br, int EventSet) {
+    long long values[2];
 
     char st[100];
     int i, j, k;
@@ -81,7 +98,9 @@ void OnMultLine(int m_ar, int m_br) {
         for (j = 0; j < m_br; j++)
             phb[i * m_br + j] = (double)(i + 1);
 
-    Time1 = clock();
+    int ret = PAPI_start(EventSet);
+    if(ret != PAPI_OK) handle_error(ret);
+    auto start = chrono::high_resolution_clock::now();
 
     for (i = 0; i < m_ar; i++) {
         for (k = 0; k < m_br; k++) {
@@ -91,8 +110,17 @@ void OnMultLine(int m_ar, int m_br) {
         }
     }
 
-    Time2 = clock();
-    sprintf(st, "Time: %3.3f seconds\n", (double)(Time2 - Time1) / CLOCKS_PER_SEC);
+    auto end = chrono::high_resolution_clock::now();
+
+    ret = PAPI_stop(EventSet, values);
+    if(ret != PAPI_OK) handle_error(ret);
+
+    printf("L1 DCM: %lld \n", values[0]);
+    printf("L2 DCM: %lld \n", values[1]);
+
+    double elapsedTime = chrono::duration<double>(end - start).count();
+
+    sprintf(st, "Time: %3.3f seconds\n", elapsedTime);
     cout << st;
 
     // display 10 elements of the result matrix tto verify correctness
@@ -106,11 +134,21 @@ void OnMultLine(int m_ar, int m_br) {
     free(pha);
     free(phb);
     free(phc);
+    ret = PAPI_reset(EventSet);
+    if (ret != PAPI_OK)
+        std::cout << "FAIL reset" << endl;
+
+    BenchmarkResult result;
+    result.timeSeconds = elapsedTime;
+    result.gflops = computeGFLOPS(m_ar, result.timeSeconds);
+    result.papiL1DCM = values[0];
+    result.papiL2DCM = values[1];
+    return result;
 }
 
 // add code here for block x block matriz multiplication
-void OnMultBlock(int m_ar, int m_br, int bkSize) {
-    SYSTEMTIME Time1, Time2;
+BenchmarkResult OnMultBlock(int m_ar, int m_br, int bkSize, int EventSet) {
+    long long values[2];
 
     char st[100];
     int i, j, k, x, y;
@@ -129,7 +167,9 @@ void OnMultBlock(int m_ar, int m_br, int bkSize) {
         for (int j = 0; j < m_br; j++)
             phb[i * m_br + j] = i + 1;
 
-    Time1 = clock();
+    int ret = PAPI_start(EventSet);
+    if(ret != PAPI_OK) handle_error(ret);
+    auto start = chrono::high_resolution_clock::now();
 
     for (x = 0; x < m_ar; x += bkSize) {
         for (y = 0; y < m_ar; y += bkSize) {
@@ -143,8 +183,16 @@ void OnMultBlock(int m_ar, int m_br, int bkSize) {
         }
     }
 
-    Time2 = clock();
-    sprintf(st, "Time: %3.3f seconds\n", (double)(Time2 - Time1) / CLOCKS_PER_SEC);
+    auto end = chrono::high_resolution_clock::now();
+    ret = PAPI_stop(EventSet, values);
+    if(ret != PAPI_OK) handle_error(ret);
+
+    printf("L1 DCM: %lld \n", values[0]);
+    printf("L2 DCM: %lld \n", values[1]);
+
+    double elapsedTime = chrono::duration<double>(end - start).count();
+    
+    sprintf(st, "Time: %3.3f seconds\n", elapsedTime);
     cout << st;
 
     // display 10 elements of the result matrix tto verify correctness
@@ -158,11 +206,16 @@ void OnMultBlock(int m_ar, int m_br, int bkSize) {
     free(pha);
     free(phb);
     free(phc);
-}
+    ret = PAPI_reset(EventSet);
+    if (ret != PAPI_OK)
+        std::cout << "FAIL reset" << endl;
 
-void handle_error(int retval) {
-    printf("PAPI error %d: %s\n", retval, PAPI_strerror(retval));
-    exit(1);
+    BenchmarkResult result;
+    result.timeSeconds = elapsedTime;
+    result.gflops = computeGFLOPS(m_ar, result.timeSeconds);
+    result.papiL1DCM = values[0];
+    result.papiL2DCM = values[1];
+    return result;
 }
 
 void init_papi() {
@@ -185,7 +238,6 @@ int main(int argc, char *argv[]) {
     int op;
 
     int EventSet = PAPI_NULL;
-    long long values[2];
     int ret;
 
     ret = PAPI_library_init(PAPI_VER_CURRENT);
@@ -215,32 +267,19 @@ int main(int argc, char *argv[]) {
         cin >> lin;
         col = lin;
 
-        // Start counting
-        ret = PAPI_start(EventSet);
-        if (ret != PAPI_OK) cout << "ERROR: Start PAPI" << endl;
-
         switch (op) {
             case 1:
-                OnMult(lin, col);
+                OnMult(lin, col, EventSet);
                 break;
             case 2:
-                OnMultLine(lin, col);
+                OnMultLine(lin, col, EventSet);
                 break;
             case 3:
                 cout << "Block Size? ";
                 cin >> blockSize;
-                OnMultBlock(lin, col, blockSize);
+                OnMultBlock(lin, col, blockSize, EventSet);
                 break;
         }
-
-        ret = PAPI_stop(EventSet, values);
-        if (ret != PAPI_OK) cout << "ERROR: Stop PAPI" << endl;
-        printf("L1 DCM: %lld \n", values[0]);
-        printf("L2 DCM: %lld \n", values[1]);
-
-        ret = PAPI_reset(EventSet);
-        if (ret != PAPI_OK)
-            std::cout << "FAIL reset" << endl;
 
     } while (op != 0);
 

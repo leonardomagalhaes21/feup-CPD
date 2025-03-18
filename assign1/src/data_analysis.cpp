@@ -1,71 +1,38 @@
-#include <papi.h>
-#include <time.h>
 #include <fstream>
 #include <iostream>
 #include <string>
 #include <vector>
+#include "benchmark_result.h"
+#include "papi_utils.h"
 
 using namespace std;
 
-#define SYSTEMTIME clock_t
+extern BenchmarkResult OnMult(int m_ar, int m_br, int EventSet);
+extern BenchmarkResult OnMultLine(int m_ar, int m_br, int EventSet);
+extern BenchmarkResult OnMultBlock(int m_ar, int m_br, int bkSize, int EventSet);
+extern BenchmarkResult OnMultLineParallelOuterFor(int m_ar, int m_br, int EventSet);
+extern BenchmarkResult OnMultLineParallelInnerFor(int m_ar, int m_br, int EventSet);
 
-extern void OnMult(int m_ar, int m_br);
-extern void OnMultLine(int m_ar, int m_br);
-extern void OnMultBlock(int m_ar, int m_br, int bkSize);
-extern void OnMultLineParallelOuterFor(int m_ar, int m_br);
-extern void OnMultLineParallelInnerFor(int m_ar, int m_br);
-extern void handle_error(int retval);
+extern double computeGFLOPS(int n, double elapsedSec);
 
-double computeGFLOPS(int n, double elapsedSec) {
-    return (2.0 * n * n * n) / (elapsedSec * 1e9);
-}
+void runTest(const string &methodName, BenchmarkResult (*func)(int, int, int), int lin, int col, int EventSet, ofstream &csv) {
 
-void runTest(const string &methodName, void (*func)(int, int), int lin, int col, int EventSet, ofstream &csv) {
-    long long values[2] = {0, 0};
+    BenchmarkResult result = func(lin, col, EventSet);
 
-    int ret = PAPI_start(EventSet);
-    if(ret != PAPI_OK) handle_error(ret);
-
-    SYSTEMTIME start = clock();
-
-    func(lin, col);
-
-    SYSTEMTIME end = clock();
-
-    ret = PAPI_stop(EventSet, values);
-    if(ret != PAPI_OK) handle_error(ret);
-
-    double elapsed = double(end - start) / CLOCKS_PER_SEC;
-    double gflops = computeGFLOPS(lin, elapsed);
-    csv << methodName << "," << lin << ",NA," << elapsed << "," << gflops << ","
-        << values[0] << "," << values[1] << "\n";
+    csv << methodName << "," << lin << ",NA," << result.timeSeconds << "," << result.gflops << ","
+        << result.papiL1DCM << "," << result.papiL2DCM << "\n";
 
     csv.flush();
-    ret = PAPI_reset(EventSet);
 }
 
-void runTestBlock(const string &methodName, void (*func)(int, int, int), int lin, int col, int blockSize, int EventSet, ofstream &csv) {
-    long long values[2] = {0, 0};
+void runTestBlock(const string &methodName, BenchmarkResult (*func)(int, int, int, int), int lin, int col, int blockSize, int EventSet, ofstream &csv) {
 
-    int ret = PAPI_start(EventSet);
-    if(ret != PAPI_OK) handle_error(ret);
+    BenchmarkResult result = func(lin, col, EventSet, blockSize);
 
-    SYSTEMTIME start = clock();
-
-    func(lin, col, blockSize);
-
-    SYSTEMTIME end = clock();
-
-    ret = PAPI_stop(EventSet, values);
-    if(ret != PAPI_OK) handle_error(ret);
-
-    double elapsed = double(end - start) / CLOCKS_PER_SEC;
-    double gflops = computeGFLOPS(lin, elapsed);
-    csv << methodName << "," << lin << "," << blockSize << "," 
-        << elapsed << "," << gflops << "," << values[0] << "," << values[1] << "\n";
+    csv << methodName << "," << lin << "," << blockSize << "," << result.timeSeconds << "," << result.gflops << "," 
+        << result.papiL1DCM << "," << result.papiL2DCM << "\n";
 
     csv.flush();
-    ret = PAPI_reset(EventSet);
 }
 
 int main() {
