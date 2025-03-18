@@ -1,16 +1,17 @@
 #include <omp.h>
-
-#include <cstdlib>
-#include <iomanip>
 #include <iostream>
 #include <vector>
+#include <chrono>
+#include "benchmark_result.h"
+#include "papi_utils.h"
 
 using namespace std;
 
-#define SYSTEMTIME clock_t
+BenchmarkResult OnMultLineParallelOuterFor(int m_ar, int m_br, int EventSet, int numThreads) {
+    omp_set_num_threads(numThreads);
 
-void OnMultLineParallelOuterFor(int m_ar, int m_br) {
     char st[100];
+    long long values[2];
 
     auto pha = vector<double>(m_ar * m_ar, 1.0);
     auto phb = vector<double>(m_ar * m_ar, 1.0);
@@ -26,7 +27,9 @@ void OnMultLineParallelOuterFor(int m_ar, int m_br) {
 
     int i, k, j;
 
-    double start = omp_get_wtime();
+    int ret = PAPI_start(EventSet);
+    if(ret != PAPI_OK) handle_error(ret);
+    auto start = chrono::high_resolution_clock::now();
 
 #pragma omp parallel for private(i, k, j)
     for (i = 0; i < m_ar; i++) {
@@ -37,8 +40,17 @@ void OnMultLineParallelOuterFor(int m_ar, int m_br) {
         }
     }
 
-    double end = omp_get_wtime();
-    sprintf(st, "Time: %3.3f seconds\n", end - start);
+    auto end = chrono::high_resolution_clock::now();
+
+    ret = PAPI_stop(EventSet, values);
+    if(ret != PAPI_OK) handle_error(ret);
+
+    printf("L1 DCM: %lld \n", values[0]);
+    printf("L2 DCM: %lld \n", values[1]);
+
+    double elapsedTime = chrono::duration<double>(end - start).count();
+
+    sprintf(st, "Time: %3.3f seconds\n", elapsedTime);
     cout << st;
 
     // display 10 elements of the result matrix to verify correctness
@@ -48,10 +60,24 @@ void OnMultLineParallelOuterFor(int m_ar, int m_br) {
             cout << phc[j] << " ";
     }
     cout << endl;
+
+    ret = PAPI_reset(EventSet);
+    if (ret != PAPI_OK)
+        std::cout << "FAIL reset" << endl;
+
+    BenchmarkResult result;
+    result.timeSeconds = elapsedTime;
+    result.gflops = computeGFLOPS(m_ar, result.timeSeconds);
+    result.papiL1DCM = values[0];
+    result.papiL2DCM = values[1];
+    return result;
 }
 
-void OnMultLineParallelInnerFor(int m_ar, int m_br) {
+BenchmarkResult OnMultLineParallelInnerFor(int m_ar, int m_br, int EventSet, int numThreads) {
+    omp_set_num_threads(numThreads);
+
     char st[100];
+    long long values[2];
 
     auto pha = vector<double>(m_ar * m_ar, 1.0);
     auto phb = vector<double>(m_ar * m_ar, 1.0);
@@ -67,7 +93,9 @@ void OnMultLineParallelInnerFor(int m_ar, int m_br) {
 
     int i, k, j;
 
-    double start = omp_get_wtime();
+    int ret = PAPI_start(EventSet);
+    if(ret != PAPI_OK) handle_error(ret);
+    auto start = chrono::high_resolution_clock::now();
 
 #pragma omp parallel private(i, k, j) num_threads(4)
     for (i = 0; i < m_ar; i++) {
@@ -79,8 +107,17 @@ void OnMultLineParallelInnerFor(int m_ar, int m_br) {
         }
     }
 
-    double end = omp_get_wtime();
-    sprintf(st, "Time: %3.3f seconds\n", end - start);
+    auto end = chrono::high_resolution_clock::now();
+    
+    ret = PAPI_stop(EventSet, values);
+    if(ret != PAPI_OK) handle_error(ret);
+
+    printf("L1 DCM: %lld \n", values[0]);
+    printf("L2 DCM: %lld \n", values[1]);
+
+    double elapsedTime = chrono::duration<double>(end - start).count();
+    
+    sprintf(st, "Time: %3.3f seconds\n", elapsedTime);
     cout << st;
 
     // display 10 elements of the result matrix to verify correctness
@@ -90,6 +127,17 @@ void OnMultLineParallelInnerFor(int m_ar, int m_br) {
             cout << phc[j] << " ";
     }
     cout << endl;
+
+    ret = PAPI_reset(EventSet);
+    if (ret != PAPI_OK)
+        std::cout << "FAIL reset" << endl;
+
+    BenchmarkResult result;
+    result.timeSeconds = elapsedTime;
+    result.gflops = computeGFLOPS(m_ar, result.timeSeconds);
+    result.papiL1DCM = values[0];
+    result.papiL2DCM = values[1];
+    return result;
 }
 
 #ifndef DATA_ANALYSIS_BUILD
@@ -99,6 +147,22 @@ int main(int argc, char *argv[]) {
     cin >> lin;
     col = lin;
 
+    int EventSet = PAPI_NULL;
+    int ret;
+
+    ret = PAPI_library_init(PAPI_VER_CURRENT);
+    if (ret != PAPI_VER_CURRENT)
+        std::cout << "FAIL" << endl;
+
+    ret = PAPI_create_eventset(&EventSet);
+    if (ret != PAPI_OK) cout << "ERROR: create eventset" << endl;
+
+    ret = PAPI_add_event(EventSet, PAPI_L1_DCM);
+    if (ret != PAPI_OK) cout << "ERROR: PAPI_L1_DCM" << endl;
+
+    ret = PAPI_add_event(EventSet, PAPI_L2_DCM);
+    if (ret != PAPI_OK) cout << "ERROR: PAPI_L2_DCM" << endl;
+
     cout << "Choose multiplication method:" << endl;
     cout << "1. Line Multiplication Parallel Outer loop" << endl;
     cout << "2. Line Multiplication Parallel Inner loop" << endl;
@@ -106,14 +170,26 @@ int main(int argc, char *argv[]) {
 
     switch (choice) {
         case 1:
-            OnMultLineParallelOuterFor(lin, col);
+            OnMultLineParallelOuterFor(lin, col, EventSet, 4);
             break;
         case 2:
-            OnMultLineParallelInnerFor(lin, col);
+            OnMultLineParallelInnerFor(lin, col, EventSet, 4);
             break;
         default:
             cout << "Invalid choice" << endl;
     }
+
+    ret = PAPI_remove_event(EventSet, PAPI_L1_DCM);
+    if (ret != PAPI_OK)
+        std::cout << "FAIL remove event" << endl;
+
+    ret = PAPI_remove_event(EventSet, PAPI_L2_DCM);
+    if (ret != PAPI_OK)
+        std::cout << "FAIL remove event" << endl;
+
+    ret = PAPI_destroy_eventset(&EventSet);
+    if (ret != PAPI_OK)
+        std::cout << "FAIL destroy" << endl;
 
     return 0;
 }
