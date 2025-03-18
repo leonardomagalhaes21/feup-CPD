@@ -97,7 +97,7 @@ BenchmarkResult OnMultLineParallelInnerFor(int m_ar, int m_br, int EventSet, int
     if(ret != PAPI_OK) handle_error(ret);
     auto start = chrono::high_resolution_clock::now();
 
-#pragma omp parallel private(i, k, j) num_threads(4)
+#pragma omp parallel private(i, k, j)
     for (i = 0; i < m_ar; i++) {
         for (k = 0; k < m_br; k++) {
 #pragma omp for
