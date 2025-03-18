@@ -1,20 +1,12 @@
 #include <papi.h>
-#include <time.h>
+#include <chrono>
 #include <fstream>
 #include <iostream>
 #include <string>
 #include <vector>
 
 using namespace std;
-
-#define SYSTEMTIME clock_t
-
-extern void OnMult(int m_ar, int m_br);
-extern void OnMultLine(int m_ar, int m_br);
-extern void OnMultBlock(int m_ar, int m_br, int bkSize);
-extern void OnMultLineParallelOuterFor(int m_ar, int m_br);
-extern void OnMultLineParallelInnerFor(int m_ar, int m_br);
-extern void handle_error(int retval);
+using namespace std::chrono;
 
 double computeGFLOPS(int n, double elapsedSec) {
     return (2.0 * n * n * n) / (elapsedSec * 1e9);
@@ -26,18 +18,18 @@ void runTest(const string &methodName, void (*func)(int, int), int lin, int col,
     int ret = PAPI_start(EventSet);
     if(ret != PAPI_OK) handle_error(ret);
 
-    SYSTEMTIME start = clock();
-
+    auto start = high_resolution_clock::now();
+    
     func(lin, col);
 
-    SYSTEMTIME end = clock();
+    auto end = high_resolution_clock::now();
 
     ret = PAPI_stop(EventSet, values);
     if(ret != PAPI_OK) handle_error(ret);
 
-    double elapsed = double(end - start) / CLOCKS_PER_SEC;
-    double gflops = computeGFLOPS(lin, elapsed);
-    csv << methodName << "," << lin << ",NA," << elapsed << "," << gflops << ","
+    duration<double> elapsed = end - start;
+    double gflops = computeGFLOPS(lin, elapsed.count());
+    csv << methodName << "," << lin << ",NA," << elapsed.count() << "," << gflops << ","
         << values[0] << "," << values[1] << "\n";
 
     csv.flush();
@@ -50,19 +42,19 @@ void runTestBlock(const string &methodName, void (*func)(int, int, int), int lin
     int ret = PAPI_start(EventSet);
     if(ret != PAPI_OK) handle_error(ret);
 
-    SYSTEMTIME start = clock();
+    auto start = high_resolution_clock::now();
 
     func(lin, col, blockSize);
 
-    SYSTEMTIME end = clock();
+    auto end = high_resolution_clock::now();
 
     ret = PAPI_stop(EventSet, values);
     if(ret != PAPI_OK) handle_error(ret);
 
-    double elapsed = double(end - start) / CLOCKS_PER_SEC;
-    double gflops = computeGFLOPS(lin, elapsed);
+    duration<double> elapsed = end - start;
+    double gflops = computeGFLOPS(lin, elapsed.count());
     csv << methodName << "," << lin << "," << blockSize << "," 
-        << elapsed << "," << gflops << "," << values[0] << "," << values[1] << "\n";
+        << elapsed.count() << "," << gflops << "," << values[0] << "," << values[1] << "\n";
 
     csv.flush();
     ret = PAPI_reset(EventSet);

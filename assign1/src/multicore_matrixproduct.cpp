@@ -69,7 +69,7 @@ void OnMultLineParallelInnerFor(int m_ar, int m_br) {
 
     double start = omp_get_wtime();
 
-#pragma omp parallel private(i, k, j)
+#pragma omp parallel private(i, k, j) num_threads(x)
     for (i = 0; i < m_ar; i++) {
         for (k = 0; k < m_br; k++) {
 #pragma omp for

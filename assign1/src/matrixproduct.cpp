@@ -1,14 +1,17 @@
 #include <papi.h>
 #include <stdio.h>
 #include <time.h>
+#include <chrono> // Add chrono header for timing
 
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
 
 using namespace std;
+using namespace std::chrono; // Add chrono namespace
 
-#define SYSTEMTIME clock_t
+// Replace SYSTEMTIME with chrono time_point
+#define SYSTEMTIME std::chrono::high_resolution_clock::time_point
 
 void OnMult(int m_ar, int m_br) {
     SYSTEMTIME Time1, Time2;
@@ -31,7 +34,8 @@ void OnMult(int m_ar, int m_br) {
         for (j = 0; j < m_br; j++)
             phb[i * m_br + j] = (double)(i + 1);
 
-    Time1 = clock();
+    // Use chrono for timing
+    Time1 = high_resolution_clock::now();
 
     for (i = 0; i < m_ar; i++) {
         for (j = 0; j < m_br; j++) {
@@ -43,8 +47,10 @@ void OnMult(int m_ar, int m_br) {
         }
     }
 
-    Time2 = clock();
-    sprintf(st, "Time: %3.3f seconds\n", (double)(Time2 - Time1) / CLOCKS_PER_SEC);
+    // Use chrono for timing
+    Time2 = high_resolution_clock::now();
+    duration<double> time_span = duration_cast<duration<double>>(Time2 - Time1);
+    sprintf(st, "Time: %3.3f seconds\n", time_span.count());
     cout << st;
 
     // display 10 elements of the result matrix tto verify correctness
@@ -81,7 +87,8 @@ void OnMultLine(int m_ar, int m_br) {
         for (j = 0; j < m_br; j++)
             phb[i * m_br + j] = (double)(i + 1);
 
-    Time1 = clock();
+    // Use chrono for timing
+    Time1 = high_resolution_clock::now();
 
     for (i = 0; i < m_ar; i++) {
         for (k = 0; k < m_br; k++) {
@@ -91,8 +98,10 @@ void OnMultLine(int m_ar, int m_br) {
         }
     }
 
-    Time2 = clock();
-    sprintf(st, "Time: %3.3f seconds\n", (double)(Time2 - Time1) / CLOCKS_PER_SEC);
+    // Use chrono for timing
+    Time2 = high_resolution_clock::now();
+    duration<double> time_span = duration_cast<duration<double>>(Time2 - Time1);
+    sprintf(st, "Time: %3.3f seconds\n", time_span.count());
     cout << st;
 
     // display 10 elements of the result matrix tto verify correctness
@@ -129,7 +138,8 @@ void OnMultBlock(int m_ar, int m_br, int bkSize) {
         for (int j = 0; j < m_br; j++)
             phb[i * m_br + j] = i + 1;
 
-    Time1 = clock();
+    // Use chrono for timing
+    Time1 = high_resolution_clock::now();
 
     for (x = 0; x < m_ar; x += bkSize) {
         for (y = 0; y < m_ar; y += bkSize) {
@@ -143,8 +153,10 @@ void OnMultBlock(int m_ar, int m_br, int bkSize) {
         }
     }
 
-    Time2 = clock();
-    sprintf(st, "Time: %3.3f seconds\n", (double)(Time2 - Time1) / CLOCKS_PER_SEC);
+    // Use chrono for timing
+    Time2 = high_resolution_clock::now();
+    duration<double> time_span = duration_cast<duration<double>>(Time2 - Time1);
+    sprintf(st, "Time: %3.3f seconds\n", time_span.count());
     cout << st;
 
     // display 10 elements of the result matrix tto verify correctness
