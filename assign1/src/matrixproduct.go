@@ -104,7 +104,7 @@ func calculateGflops(matrixSize int, timeSeconds float64) float64 {
 
 func runBenchmarks() {
     // Create or open CSV file
-    file, err := os.Create("matrix_benchmark.csv")
+    file, err := os.Create("data/benchmark_results_go.csv")
     if err != nil {
         fmt.Println("Error creating file:", err)
         return
