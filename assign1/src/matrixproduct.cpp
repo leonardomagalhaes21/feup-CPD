@@ -5,7 +5,6 @@
 #include "papi_utils.h"
 
 using namespace std;
-using namespace std::chrono; // Add chrono namespace
 
 BenchmarkResult OnMult(int m_ar, int m_br, int EventSet)
 {
