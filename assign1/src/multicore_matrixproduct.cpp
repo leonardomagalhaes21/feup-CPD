@@ -7,7 +7,9 @@
 
 using namespace std;
 
-BenchmarkResult OnMultLineParallelOuterFor(int m_ar, int m_br, int EventSet) {
+BenchmarkResult OnMultLineParallelOuterFor(int m_ar, int m_br, int EventSet, int numThreads) {
+    omp_set_num_threads(numThreads);
+
     char st[100];
     long long values[2];
 
@@ -71,7 +73,9 @@ BenchmarkResult OnMultLineParallelOuterFor(int m_ar, int m_br, int EventSet) {
     return result;
 }
 
-BenchmarkResult OnMultLineParallelInnerFor(int m_ar, int m_br, int EventSet) {
+BenchmarkResult OnMultLineParallelInnerFor(int m_ar, int m_br, int EventSet, int numThreads) {
+    omp_set_num_threads(numThreads);
+
     char st[100];
     long long values[2];
 
@@ -166,10 +170,10 @@ int main(int argc, char *argv[]) {
 
     switch (choice) {
         case 1:
-            OnMultLineParallelOuterFor(lin, col, EventSet);
+            OnMultLineParallelOuterFor(lin, col, EventSet, 4);
             break;
         case 2:
-            OnMultLineParallelInnerFor(lin, col, EventSet);
+            OnMultLineParallelInnerFor(lin, col, EventSet, 4);
             break;
         default:
             cout << "Invalid choice" << endl;
