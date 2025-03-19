@@ -27,7 +27,7 @@ void runTest(const string &methodName, BenchmarkResult (*func)(int, int, int), i
 void runTestBlock(const string &methodName, BenchmarkResult (*func)(int, int, int, int), int lin, int col, int blockSize, int EventSet, ofstream &csv)
 {
 
-    BenchmarkResult result = func(lin, col, EventSet, blockSize);
+    BenchmarkResult result = func(lin, col, blockSize, EventSet);
 
     csv << methodName << "," << lin << "," << blockSize << "," << result.timeSeconds << "," << result.gflops << ","
         << result.papiL1DCM << "," << result.papiL2DCM << ",NA" << "\n";
@@ -54,7 +54,7 @@ int main()
 
     vector<int> block_sizes = {128, 256, 512, 1024};
 
-    vector<int> thread_counts = {2, 4, 8, 12};
+    vector<int> thread_counts = {2, 4, 8};
 
     ofstream csv("data/benchmark_results.csv", ios::out);
     if (!csv.is_open())
