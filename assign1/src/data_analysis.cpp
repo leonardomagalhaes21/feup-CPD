@@ -98,6 +98,7 @@ int main()
     // For block multiplication, run tests on large sizes for the different block sizes
     for (int n : sizes_large)
     {
+        runTest("OnMultLine", OnMultLine, n, n, EventSet, csv);
         for (int bs : block_sizes)
         {
             runTestBlock("OnMultBlock", OnMultBlock, n, n, bs, EventSet, csv);
