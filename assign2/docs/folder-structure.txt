@@ -1,0 +1,34 @@
+concurrent-chat-system/
+├── src/                     # Root directory for source code
+│   ├── main/
+│   │   └── java/
+│   │       └── chat/        # Main package (you can rename this, e.g., com.yourgroup.chat)
+│   │           ├── client/
+│   │           │   └── Client.java        # Main client logic
+│   │           ├── server/
+│   │           │   ├── Server.java        # Main server logic, listener, room management
+│   │           │   ├── ClientHandler.java # Runnable task for handling one client connection
+│   │           │   ├── Room.java          # Represents a chat room and its state
+│   │           │   └── auth/
+│   │           │       └── AuthenticationService.java # Handles user loading/verification (optional separation)
+│   │           │   └── ai/
+│   │           │       └── OllamaService.java   # Handles interaction with LLM (optional separation)
+│   │           └── common/             # (Optional) If any classes are shared (unlikely here)
+│
+├── resources/               # Non-code files needed at runtime
+│   └── main/
+│       ├── users.txt          # Example user credentials file
+│       ├── server.jks         # Server's TLS Keystore
+│       └── client_truststore.jks # Client's Truststore (for server cert)
+│
+├── docs/                    # Project documentation
+│   ├── README.md            # The README we generated
+│   ├── implementation-plan.md # The step-by-step plan we generated
+│   └── design_notes.md    # Any other notes you take
+│
+├── scripts/                 # Helper scripts (optional, but useful)
+│   ├── generate_certs.sh    # Example: Script using keytool to generate TLS certs
+│   ├── run_server.sh        # Example: Script to compile and run the server easily
+│   └── run_client.sh        # Example: Script to compile and run the client easily
+│
+└── copilot-context.md      # The context file we generated
