@@ -12,7 +12,7 @@ This project implements a multi-user, room-based chat server and client in Java 
 ## Current Implementation Status
 * ✅ Phase 1: Basic Server & Client Connection
 * ✅ Phase 2: User Authentication
-* 🔄 Phase 3: Basic Room Management & Chat (In progress)
+* ✅ Phase 3: Basic Room Management & Chat
 * ⏳ Phase 4: Concurrency Control (Not started)
 * ⏳ Phase 5: AI Rooms (Not started)
 * ⏳ Phase 6: Secure Communication (TLS/SSL) (Not started)
@@ -22,6 +22,8 @@ This project implements a multi-user, room-based chat server and client in Java 
 *   **Virtual Threads:** Server handles each client connection on a dedicated virtual thread for high scalability.
 *   **User Authentication:** Users must log in with a username and password before participating.
 *   **Chat Rooms:** Users can list available rooms, join existing ones, or create new ones.
+*   **Message Broadcasting:** Messages sent in a room are broadcast to all members of that room.
+*   **Room Notifications:** Users are notified when others join or leave rooms.
 *   **AI Integration:** Option to create "AI rooms" where a specified prompt and the conversation history are sent to a local Ollama instance (Coming soon).
 *   **Explicit Locking:** Demonstrates manual concurrency control using `ReentrantReadWriteLock` (Coming soon).
 *   **Secure Communication:** Uses TLS/SSL to encrypt communication (Coming soon).
@@ -91,18 +93,21 @@ java -cp out/production/assign2 chat.client.Client [server_address] [port]
    - Failed login attempts are properly handled
    - After 3 failed attempts, connection is closed
 
-### Phase 3: Basic Room Management & Chat (In Progress)
+### Phase 3: Basic Room Management & Chat
 1. Start the server: `./scripts/run_server.sh`
 2. Start multiple clients: `./scripts/run_client.sh` (at least 2)
-3. Log in on each client with different credentials
+3. Log in on each client with different credentials (e.g., alice and bob)
 4. Test room commands:
-   - List available rooms: `/list`
+   - List available rooms: `/list` (a default "general" room is created at server startup)
    - Create a new room: `/create roomname`
    - Join an existing room: `/join roomname`
    - Leave the current room: `/leave`
+   - Get help: `/help`
 5. Test messaging:
    - Send messages in a room and verify only users in that room receive them
+   - Check that messages include the sender's username
    - Verify that join/leave notifications are broadcast to room members
+   - Confirm recent message history is shown when joining a room
 
 ## User Credentials for Testing
 
@@ -122,6 +127,7 @@ The system comes with predefined users for testing:
 - `/create <roomname>`: Create a new chat room
 - `/join <roomname>`: Join an existing chat room
 - `/leave`: Leave the current room
+- `/help`: Show available commands
 
 **Messaging:**
 - Any text that doesn't start with `/` is sent as a message to the current room
@@ -163,13 +169,14 @@ assign2/
 
 The system uses a client-server model over TCP/IP.
 
-1. The **Server** listens for incoming connections on a specified port.
+1. The **Server** listens for incoming connections on a specified port and creates a default "general" room at startup.
 2. Upon connection, the server creates a **Virtual Thread** to handle the client independently.
-3. The client must first **authenticate**. The server verifies credentials against a predefined list.
+3. The client must first **authenticate**. The server verifies credentials against a predefined list from the users file.
 4. Authenticated clients can **interact with rooms**. The server maintains a global Map of rooms.
-5. Each **Room** object manages its own set of members and message history.
-6. When a client sends a **message**, the server adds it to the room's history and broadcasts it to all room members.
-7. Clients continuously listen for incoming messages from the server and display them.
+5. Each **Room** object manages its own set of members and maintains a message history (limited to the most recent 100 messages).
+6. Users can create their own rooms, join existing rooms, or leave rooms using commands.
+7. When a client sends a **message**, the server adds it to the room's history and broadcasts it to all room members.
+8. The system provides notifications when users join or leave rooms.
 
 ## Future Enhancements
 

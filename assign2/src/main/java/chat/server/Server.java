@@ -4,6 +4,8 @@ import chat.server.auth.AuthenticationService;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -15,6 +17,7 @@ public class Server {
     private ExecutorService executor;
     private boolean isRunning;
     private AuthenticationService authService;
+    private final Map<String, Room> rooms = new HashMap<>();
 
     public Server(int port, String userFilePath) {
         this.port = port;
@@ -25,6 +28,10 @@ public class Server {
         try {
             // Initialize the authentication service
             authService = new AuthenticationService(userFilePath);
+
+            // Create a default general room
+            createRoom("general");
+            System.out.println("Created default room: general");
 
             serverSocket = new ServerSocket(port);
             executor = Executors.newVirtualThreadPerTaskExecutor();
@@ -52,8 +59,26 @@ public class Server {
     }
 
     private void handleClient(Socket clientSocket) {
-        ClientHandler clientHandler = new ClientHandler(clientSocket, authService);
+        ClientHandler clientHandler = new ClientHandler(clientSocket, authService, this);
         clientHandler.handle();
+    }
+
+    public synchronized Room createRoom(String roomName) {
+        if (rooms.containsKey(roomName)) {
+            return null; // Room already exists
+        }
+
+        Room newRoom = new Room(roomName);
+        rooms.put(roomName, newRoom);
+        return newRoom;
+    }
+
+    public synchronized Room getRoom(String roomName) {
+        return rooms.get(roomName);
+    }
+
+    public synchronized Map<String, Room> getRooms() {
+        return new HashMap<>(rooms); // Return a copy to prevent concurrent modification
     }
 
     public void stop() {
