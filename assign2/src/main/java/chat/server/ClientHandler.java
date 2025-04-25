@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
+import java.net.SocketException;
 import java.util.List;
 import java.util.Map;
 
@@ -44,8 +45,13 @@ public class ClientHandler {
 
             // Process client commands
             processCommands();
+        } catch (SocketException se) {
+            System.err.println("Client connection lost: " + (username != null ? username : "unknown") + " - " + se.getMessage());
         } catch (IOException e) {
             System.err.println("Error handling client connection: " + e.getMessage());
+        } catch (Exception e) {
+            System.err.println("Unexpected error handling client: " + e.getMessage());
+            e.printStackTrace();
         } finally {
             // If user was authenticated, log them out and leave any room they were in
             if (isAuthenticated && username != null) {
@@ -61,37 +67,44 @@ public class ClientHandler {
         int attempts = 0;
         String line;
 
-        while (attempts < MAX_LOGIN_ATTEMPTS && (line = in.readLine()) != null) {
-            if (line.startsWith("/login")) {
-                String[] parts = line.split("\\s+", 3);
+        try {
+            while (attempts < MAX_LOGIN_ATTEMPTS && (line = in.readLine()) != null) {
+                if (line.startsWith("/login")) {
+                    String[] parts = line.split("\\s+", 3);
 
-                if (parts.length < 3) {
-                    out.println("AUTH_FAIL: Invalid format. Use: /login <username> <password>");
-                    attempts++;
-                    continue;
-                }
+                    if (parts.length < 3) {
+                        out.println("AUTH_FAIL: Invalid format. Use: /login <username> <password>");
+                        attempts++;
+                        continue;
+                    }
 
-                username = parts[1];
-                String password = parts[2];
+                    username = parts[1];
+                    String password = parts[2];
 
-                if (authService.authenticate(username, password)) {
-                    isAuthenticated = true;
-                    out.println("AUTH_OK: Welcome, " + username + "!");
-                    System.out.println("User authenticated: " + username);
-                    return true;
+                    if (authService.authenticate(username, password)) {
+                        isAuthenticated = true;
+                        out.println("AUTH_OK: Welcome, " + username + "!");
+                        System.out.println("User authenticated: " + username);
+                        return true;
+                    } else {
+                        out.println("AUTH_FAIL: Invalid credentials or user already logged in");
+                        attempts++;
+                        // Reset username since authentication failed
+                        username = null;
+                    }
                 } else {
-                    out.println("AUTH_FAIL: Invalid credentials or user already logged in");
+                    out.println("AUTH_FAIL: Please login first using: /login <username> <password>");
                     attempts++;
                 }
-            } else {
-                out.println("AUTH_FAIL: Please login first using: /login <username> <password>");
-                attempts++;
             }
-        }
 
-        if (attempts >= MAX_LOGIN_ATTEMPTS) {
-            out.println("AUTH_FAIL: Too many failed login attempts. Connection closed.");
-            System.out.println("Client exceeded maximum login attempts. Connection closed.");
+            if (attempts >= MAX_LOGIN_ATTEMPTS) {
+                out.println("AUTH_FAIL: Too many failed login attempts. Connection closed.");
+                System.out.println("Client exceeded maximum login attempts. Connection closed.");
+            }
+        } catch (IOException e) {
+            System.err.println("Error during authentication: " + e.getMessage());
+            throw e;
         }
 
         return false;
@@ -101,48 +114,61 @@ public class ClientHandler {
         String line;
         sendHelp();
 
-        while ((line = in.readLine()) != null) {
-            if (line.startsWith("/")) {
-                // Handle commands
-                String[] parts = line.split("\\s+", 3); // Split into at most 3 parts for AI room
-                String command = parts[0].toLowerCase();
+        try {
+            while ((line = in.readLine()) != null) {
+                try {
+                    if (line.startsWith("/")) {
+                        // Handle commands
+                        String[] parts = line.split("\\s+", 3); // Split into at most 3 parts for AI room
+                        String command = parts[0].toLowerCase();
 
-                switch (command) {
-                    case "/list":
-                        listRooms();
-                        break;
-                    case "/create":
-                        if (parts.length < 2) {
-                            out.println("ERROR: Usage: /create <roomname> [ai_prompt]");
-                        } else if (parts.length == 2) {
-                            createRegularRoom(parts[1]);
-                        } else { // parts.length == 3
-                            createAiRoom(parts[1], parts[2]);
+                        switch (command) {
+                            case "/list":
+                                listRooms();
+                                break;
+                            case "/create":
+                                if (parts.length < 2) {
+                                    out.println("ERROR: Usage: /create <roomname> [ai_prompt]");
+                                } else if (parts.length == 2) {
+                                    createRegularRoom(parts[1]);
+                                } else { // parts.length == 3
+                                    createAiRoom(parts[1], parts[2]);
+                                }
+                                break;
+                            case "/join":
+                                if (parts.length < 2) {
+                                    out.println("ERROR: Usage: /join <roomname>");
+                                } else {
+                                    joinRoom(parts[1]);
+                                }
+                                break;
+                            case "/leave":
+                                leaveCurrentRoom();
+                                break;
+                            case "/exit":
+                                out.println("Goodbye! Disconnecting...");
+                                return;
+                            case "/help":
+                                sendHelp();
+                                break;
+                            default:
+                                out.println("Unknown command: " + command + ". Type /help for available commands.");
                         }
-                        break;
-                    case "/join":
-                        if (parts.length < 2) {
-                            out.println("ERROR: Usage: /join <roomname>");
-                        } else {
-                            joinRoom(parts[1]);
-                        }
-                        break;
-                    case "/leave":
-                        leaveCurrentRoom();
-                        break;
-                    case "/help":
-                        sendHelp();
-                        break;
-                    default:
-                        out.println("Unknown command: " + command + ". Type /help for available commands.");
+                    } else if (line.trim().isEmpty()) {
+                        // Ignore empty messages
+                        continue;
+                    } else {
+                        // Handle regular chat message
+                        sendChatMessage(line);
+                    }
+                } catch (Exception e) {
+                    System.err.println("Error processing command from " + username + ": " + e.getMessage());
+                    out.println("Error processing your command. Please try again or type /help.");
                 }
-            } else if (line.trim().isEmpty()) {
-                // Ignore empty messages
-                continue;
-            } else {
-                // Handle regular chat message
-                sendChatMessage(line);
             }
+        } catch (IOException e) {
+            System.err.println("Connection lost with client " + username + ": " + e.getMessage());
+            throw e;
         }
     }
 
@@ -306,6 +332,7 @@ public class ClientHandler {
         out.println("/create <roomname> <ai_prompt> - Create a new AI room with specified prompt");
         out.println("/join <roomname> - Join an existing room");
         out.println("/leave - Leave current room");
+        out.println("/exit - Disconnect from the server");
         out.println("/help - Show this help message");
         out.println("");
         out.println("To send a message, simply type and press Enter when in a room");
@@ -330,12 +357,19 @@ public class ClientHandler {
             if (out != null) {
                 out.close();
             }
-            if (clientSocket != null) {
+            if (clientSocket != null && !clientSocket.isClosed()) {
                 clientSocket.close();
             }
-            System.out.println("Client disconnected");
+            System.out.println("Client disconnected: " + (username != null ? username : "unknown"));
         } catch (IOException e) {
             System.err.println("Error closing resources: " + e.getMessage());
         }
+    }
+
+    /**
+     * Checks if the connection to this client is still active
+     */
+    public boolean isConnected() {
+        return clientSocket != null && !clientSocket.isClosed() && clientSocket.isConnected();
     }
 }

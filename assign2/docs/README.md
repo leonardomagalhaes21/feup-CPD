@@ -1,256 +1,140 @@
-# Concurrent TCP Chat Server
+# Secure Concurrent Chat Application
 
-## Overview
-This project implements a multi-user, room-based chat server and client in Java (SE 21 or later) using TCP/IP. It demonstrates core concepts of network programming and concurrent systems, featuring:
-*   User authentication
-*   Dynamic creation and joining of chat rooms
-*   Real-time message broadcasting within rooms
-*   Special AI-powered rooms that interact with a local LLM (Ollama)
-*   Robust concurrency handling using Java Virtual Threads and explicit `java.util.concurrent.locks`
-*   Secure communication using TLS/SSL (Coming soon)
-
-## Current Implementation Status
-* ✅ Phase 1: Basic Server & Client Connection
-* ✅ Phase 2: User Authentication
-* ✅ Phase 3: Basic Room Management & Chat
-* ✅ Phase 4: Concurrency Control
-* ✅ Phase 5: AI Rooms
-* ⏳ Phase 6: Secure Communication (TLS/SSL) (Not started)
+A secure, multi-threaded chat application implemented in Java, featuring virtual threads, TLS/SSL encryption, user authentication, chat rooms, and AI integration.
 
 ## Features
-*   **Client-Server Architecture:** Standard TCP-based communication.
-*   **Virtual Threads:** Server handles each client connection on a dedicated virtual thread for high scalability.
-*   **User Authentication:** Users must log in with a username and password before participating.
-*   **Chat Rooms:** Users can list available rooms, join existing ones, or create new ones.
-*   **Message Broadcasting:** Messages sent in a room are broadcast to all members of that room.
-*   **Room Notifications:** Users are notified when others join or leave rooms.
-*   **Thread-safe Design:** Uses `ReentrantReadWriteLock` for concurrent access to shared data.
-*   **AI Integration:** Create "AI rooms" where a specified prompt and conversation history are sent to a local Ollama instance, generating AI responses in real-time.
-*   **Secure Communication:** Uses TLS/SSL to encrypt communication (Coming soon).
 
-## How to Run
+- **Secure Communication**: End-to-end encryption using TLS/SSL
+- **User Authentication**: Login system with username/password verification
+- **Chat Rooms**: Create and join multiple chat rooms
+- **Concurrent Design**: Utilizes Java virtual threads for high scalability
+- **AI Integration**: Special rooms with AI assistant capabilities via Ollama
+- **Thread-safe Implementation**: Proper concurrency control using read-write locks
 
-**Prerequisites:**
-*   Java Development Kit (JDK) SE 21 or later.
-*   Ollama installed and running locally for AI rooms. 
+## Requirements
 
-### Setting Up Ollama for AI Rooms
+- **Java 21+** (for virtual threads support)
+- **Ollama** (optional, for AI room functionality)
 
-To use the AI room functionality, you need to have Ollama running in Docker:
+## Quick Start
 
-1. Install Docker if you don't have it:
+### 1. Generate SSL Certificates
+
+Before running the application, generate the necessary SSL certificates:
+
 ```bash
-# Update package list
-sudo apt update
-
-# Install Docker
-sudo apt install apt-transport-https ca-certificates curl software-properties-common
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
-sudo apt update
-sudo apt install docker-ce docker-ce-cli containerd.io
-sudo usermod -aG docker $USER
+./scripts/generate_certs.sh
 ```
 
-2. Run the Ollama container:
+This creates a server keystore and client truststore for secure communication.
+
+### 2. Start the Server
+
+Run the server with default settings:
+
 ```bash
-sudo docker run -d -v ollama:/root/.ollama -p 11434:11434 --name ollama14 ollama/ollama
+./scripts/run_server.sh
 ```
 
-3. Pull and start the llama3 model:
+Optional parameters:
+- Port number (default: 8888)
+- Users file path (default: resources/main/users.txt)
+- Enable SSL debug (true/false)
+
+Example with all parameters:
 ```bash
-sudo docker exec -it ollama14 ollama run llama3
+./scripts/run_server.sh 9999 /path/to/users.txt true
 ```
 
-4. Verify that Ollama is working with a test query:
+### 3. Connect with Clients
+
+Start one or more clients:
+
 ```bash
-curl -X POST http://localhost:11434/api/generate -d '{"model": "llama3", "prompt": "why is the sky blue?"}'
+./scripts/run_client.sh
 ```
 
-5. Keep the Ollama container running while using the chat application.
+Optional parameters:
+- Server address (default: localhost)
+- Port number (default: 8888)
+- Enable SSL debug (true/false)
 
-### Using the Provided Scripts
-
-The project includes convenient scripts for running the server and client:
-
-**Running the Server:**
+Example with all parameters:
 ```bash
-./scripts/run_server.sh [port] [users_file_path]
-```
-- Default port: 8888
-- Default users file: resources/main/users.txt
-
-**Running the Client:**
-```bash
-./scripts/run_client.sh [server_address] [port]
-```
-- Default server address: localhost
-- Default port: 8888
-
-### Manual Compilation and Running
-
-**Compilation:**
-```bash
-# Navigate to the project root directory
-javac -d out/production/assign2 src/main/java/chat/client/*.java src/main/java/chat/server/*.java src/main/java/chat/server/auth/*.java src/main/java/chat/server/ai/*.java
+./scripts/run_client.sh chat.example.com 9999 true
 ```
 
-**Running the Server:**
-```bash
-# From the project root directory
-java -cp out/production/assign2 chat.server.Server [port] [users_file_path]
-```
+## User Commands
 
-**Running the Client:**
-```bash
-# From the project root directory
-java -cp out/production/assign2 chat.client.Client [server_address] [port]
-```
+Once connected to the server, clients can use these commands:
 
-## Testing Instructions
+- `/login <username> <password>` - Authenticate with the server
+- `/list` - Show available chat rooms
+- `/create <room_name>` - Create a regular chat room
+- `/create <room_name> <ai_prompt>` - Create an AI-assisted room
+- `/join <room_name>` - Join a chat room
+- `/leave` - Leave current chat room
+- `/help` - Show available commands
+- `/exit` - Disconnect from server
 
-### Phase 1: Basic Server & Client Connection
-1. Start the server: `./scripts/run_server.sh`
-2. Start one or more clients: `./scripts/run_client.sh`
-3. Enter messages in client console - server will echo back each message.
-4. Verify that multiple clients can connect and send/receive messages independently.
+## AI Room Setup
 
-### Phase 2: User Authentication
-1. Start the server: `./scripts/run_server.sh`
-2. Start one or more clients: `./scripts/run_client.sh`
-3. Test authentication with predefined users:
-   - Valid login: `/login alice password123`
-   - Invalid password: `/login alice wrongpassword`
-   - Invalid username: `/login nonexistentuser password`
-   - Already logged in: Try logging in with the same username in a second client
-4. Verify that:
-   - Only authenticated users can send messages
-   - Failed login attempts are properly handled
-   - After 3 failed attempts, connection is closed
+To use AI rooms, [Ollama](https://ollama.com/) must be running on the server.
 
-### Phase 3: Basic Room Management & Chat
-1. Start the server: `./scripts/run_server.sh`
-2. Start multiple clients: `./scripts/run_client.sh` (at least 2)
-3. Log in on each client with different credentials (e.g., alice and bob)
-4. Test room commands:
-   - List available rooms: `/list` (a default "general" room is created at server startup)
-   - Create a new room: `/create roomname`
-   - Join an existing room: `/join roomname`
-   - Leave the current room: `/leave`
-   - Get help: `/help`
-5. Test messaging:
-   - Send messages in a room and verify only users in that room receive them
-   - Check that messages include the sender's username
-   - Verify that join/leave notifications are broadcast to room members
-   - Confirm recent message history is shown when joining a room
+1. Install Ollama following instructions at [ollama.com](https://ollama.com/)
+2. Pull a model: `ollama pull llama2` (or another model)
+3. Ensure Ollama is running and accessible at http://localhost:11434/
 
-### Phase 4: Concurrency Control
-1. Start the server: `./scripts/run_server.sh`
-2. Start multiple clients: `./scripts/run_client.sh` (at least 5-10 for stress testing)
-3. Log in with different credentials on each client
-4. Perform rapid operations simultaneously from different clients:
-   - Create multiple rooms in quick succession
-   - Have clients join and leave rooms rapidly
-   - Send messages to rooms with many concurrent users
-   - List rooms frequently while other operations are happening
-5. Observe that all operations complete without errors, race conditions, or deadlocks
-6. Verify that all messages are delivered properly and room state remains consistent
+## Security Notes
 
-### Phase 5: AI Rooms
-1. Make sure Ollama is running in Docker (see setup instructions above)
-2. Start the server: `./scripts/run_server.sh`
-3. Start multiple clients: `./scripts/run_client.sh` (at least 2)
-4. Log in with different credentials
-5. Test AI room creation and interaction:
-   - Create an AI room with a prompt: `/create airoom You are a helpful assistant named ChatBot`
-   - Join the AI room: `/join airoom`
-   - Send messages in the room and observe how the AI (Bot) responds based on the prompt
-   - Check that the AI responses appear to all users in the room
-6. Test error handling:
-   - Try creating an AI room with an empty prompt
-   - Temporarily stop the Ollama Docker container and see how the chat application handles the error
-7. Test regular rooms alongside AI rooms:
-   - Verify that regular rooms still work normally while AI rooms are active
-   - Confirm that AI responses only appear in the AI rooms
+- The application uses self-signed certificates for TLS
+- In production, replace with proper CA-signed certificates
+- Default passwords are stored in plaintext; consider implementing proper hashing
 
-## User Credentials for Testing
+## Error Handling
 
-The system comes with predefined users for testing:
-- Username: `alice`, Password: `password123`
-- Username: `bob`, Password: `securepass`
-- Username: `charlie`, Password: `qwerty`
-- Username: `admin`, Password: `admin123`
+The application includes robust error handling for:
+- Network disconnections
+- Authentication failures
+- Invalid commands
+- Resource unavailability
+- Concurrent access issues
 
-## Client Commands Reference
+## Architecture Overview
 
-**Authentication:**
-- `/login <username> <password>`: Authenticate with the server
+- **Server**: Main application server using virtual threads
+- **ClientHandler**: Manages individual client connections
+- **Room**: Chat room implementation with concurrency control
+- **AuthenticationService**: User authentication and validation
+- **OllamaService**: Integration with Ollama for AI capabilities
 
-**Room Management:**
-- `/list`: List all available chat rooms (AI rooms are marked as [AI Room])
-- `/create <roomname>`: Create a new regular chat room
-- `/create <roomname> <ai_prompt>`: Create a new AI-powered room with the specified prompt
-- `/join <roomname>`: Join an existing chat room
-- `/leave`: Leave the current room
-- `/help`: Show available commands
+## Development Plan
 
-**Messaging:**
-- Any text that doesn't start with `/` is sent as a message to the current room
-- In AI rooms, each message will trigger an AI response based on the room's prompt and conversation history
+This application was developed following a phased approach:
+1. Basic TCP communication
+2. User authentication
+3. Room management with basic chat
+4. Concurrency control with read-write locks
+5. AI room integration
+6. TLS/SSL implementation
+7. Final refinements and testing
 
-## Project Structure
+For detailed implementation notes, see [implementation-plan.md](implementation-plan.md).
 
-```
-assign2/
-├── docs/                    # Documentation files
-│   ├── folder-structure.txt
-│   ├── implementation-plan.md
-│   └── README.md
-├── resources/               # Resource files
-│   └── main/
-│       ├── client_truststore.jks  # For future SSL implementation
-│       ├── server.jks             # For future SSL implementation 
-│       └── users.txt              # User credentials for authentication
-├── scripts/                 # Helper scripts
-│   ├── generate_certs.sh    # For future SSL implementation
-│   ├── run_client.sh        # Script to run client
-│   └── run_server.sh        # Script to run server
-└── src/                     # Source code
-    └── main/
-        └── java/
-            └── chat/
-                ├── client/         # Client-side code
-                │   └── Client.java
-                └── server/         # Server-side code
-                    ├── ClientHandler.java
-                    ├── Room.java
-                    ├── Server.java
-                    ├── ai/         # AI integration (Phase 5)
-                    │   └── OllamaService.java
-                    └── auth/       # Authentication (Phase 2)
-                        └── AuthenticationService.java
-```
+## Troubleshooting
 
-## Logic Overview
+- **Connection issues**: Verify server is running and firewall settings
+- **Authentication failures**: Check username/password in users.txt
+- **SSL errors**: Ensure certificates are generated correctly
+- **AI room not responding**: Check Ollama service status
 
-The system uses a client-server model over TCP/IP.
+## License
 
-1. The **Server** listens for incoming connections on a specified port and creates a default "general" room at startup.
-2. Upon connection, the server creates a **Virtual Thread** to handle the client independently.
-3. The client must first **authenticate**. The server verifies credentials against a predefined list from the users file.
-4. Authenticated clients can **interact with rooms**. The server maintains a global Map of rooms protected by a `ReentrantReadWriteLock`.
-5. Each **Room** object manages its own set of members and maintains a message history (limited to the most recent 100 messages), protected by its own `ReentrantReadWriteLock`.
-6. For operations that update room state (adding/removing users, adding messages), the room's write lock is acquired.
-7. For operations that only read room state (listing members, retrieving history), the room's read lock is acquired.
-8. When broadcasting messages, a snapshot of room members is taken under a read lock, then the lock is released before sending messages to improve concurrency.
-9. **AI Rooms** are special rooms that send user messages to the Ollama API:
-   - When a message is added to an AI room, the conversation history is captured
-   - An asynchronous HTTP request is sent to the Ollama API with the room's prompt and history
-   - When the AI response is received, it's formatted as "Bot: [response]" and broadcast to all room members
-   - All AI operations properly respect the concurrency model with appropriate locking
-10. Users can create their own regular or AI rooms, join existing rooms, or leave rooms using commands.
+This project is part of the CPD (Parallel and Distributed Computing) course at FEUP.
 
-## Future Enhancements
+## Contributors
 
-- **Phase 6:** Secure communication using TLS/SSL encryption
-- **Phase 7:** Additional refinements and error handling enhancements
+Group 15:
+- [Student 1]
+- [Student 2]
+- [Student 3]

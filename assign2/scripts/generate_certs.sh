@@ -1,76 +1,70 @@
 #!/bin/bash
 
-# Set script to exit on any error
-set -e
+# Navigate to the project root
+cd "$(dirname "$0")/.."
 
-# Define variables
-KEYSTORE_DIR="../resources/main"
-SERVER_KEYSTORE="$KEYSTORE_DIR/server.jks"
-CLIENT_TRUSTSTORE="$KEYSTORE_DIR/client_truststore.jks"
-KEY_PASSWORD="password"
-CERT_VALIDITY=365
+# Check if keytool is available (part of JDK)
+if ! command -v keytool &> /dev/null; then
+    echo "Error: keytool not found. Please ensure Java JDK is installed and in your PATH."
+    exit 1
+fi
 
-# Make sure the directory exists
-mkdir -p $KEYSTORE_DIR
+# Create resources directory if it doesn't exist
+mkdir -p resources/main
 
-# Clean up any existing files
-rm -f $SERVER_KEYSTORE $CLIENT_TRUSTSTORE
+# Configuration variables
+KEYSTORE="resources/main/server.jks"
+TRUSTSTORE="resources/main/client_truststore.jks"
+KEYSTORE_PASSWORD="password"
+TRUSTSTORE_PASSWORD="password"
+CERT_ALIAS="serveralias"
+VALIDITY_DAYS=365
+CERT_DNAME="CN=localhost, OU=G15, O=FEUP, L=Porto, ST=Porto, C=PT"
 
-echo "======================================================"
-echo "Generating server certificate and keystore"
-echo "======================================================"
+echo "Generating certificates for secure communication..."
 
-# Generate the server's keystore (with a self-signed certificate)
+# Delete existing keystores and truststores
+rm -f "$KEYSTORE" "$TRUSTSTORE"
+
+# Generate the server keystore with a new keypair
+echo "Creating server keystore..."
 keytool -genkeypair \
-    -alias chatserver \
-    -keyalg RSA \
-    -keysize 2048 \
-    -validity $CERT_VALIDITY \
-    -keystore $SERVER_KEYSTORE \
-    -storepass $KEY_PASSWORD \
-    -keypass $KEY_PASSWORD \
-    -dname "CN=ChatServer, OU=CPD, O=FEUP, L=Porto, S=Porto, C=PT"
+  -alias "$CERT_ALIAS" \
+  -keyalg RSA \
+  -keysize 2048 \
+  -validity "$VALIDITY_DAYS" \
+  -dname "$CERT_DNAME" \
+  -keystore "$KEYSTORE" \
+  -storepass "$KEYSTORE_PASSWORD" \
+  -keypass "$KEYSTORE_PASSWORD" \
+  -deststoretype pkcs12
 
-echo "Server keystore generated: $SERVER_KEYSTORE"
-
-echo "======================================================"
-echo "Exporting server's public certificate"
-echo "======================================================"
-
-# Export the server's public certificate
+# Export the server certificate
+echo "Exporting server certificate..."
 keytool -exportcert \
-    -alias chatserver \
-    -keystore $SERVER_KEYSTORE \
-    -storepass $KEY_PASSWORD \
-    -file "$KEYSTORE_DIR/server_cert.cer"
+  -alias "$CERT_ALIAS" \
+  -file resources/main/server.cert \
+  -keystore "$KEYSTORE" \
+  -storepass "$KEYSTORE_PASSWORD"
 
-echo "Server certificate exported: $KEYSTORE_DIR/server_cert.cer"
-
-echo "======================================================"
-echo "Creating client's truststore with server's certificate"
-echo "======================================================"
-
-# Import the server's certificate into the client's truststore
+# Create client truststore and import server certificate
+echo "Creating client truststore..."
 keytool -importcert \
-    -alias chatserver \
-    -file "$KEYSTORE_DIR/server_cert.cer" \
-    -keystore $CLIENT_TRUSTSTORE \
-    -storepass $KEY_PASSWORD \
-    -noprompt
+  -alias "$CERT_ALIAS" \
+  -file resources/main/server.cert \
+  -keystore "$TRUSTSTORE" \
+  -storepass "$TRUSTSTORE_PASSWORD" \
+  -noprompt
 
-echo "Client truststore created: $CLIENT_TRUSTSTORE"
+# Clean up temporary certificate file
+rm resources/main/server.cert
 
-# Clean up the temporary certificate file
-rm -f "$KEYSTORE_DIR/server_cert.cer"
-
-echo "======================================================"
-echo "Certificate generation complete."
-echo "Server keystore: $SERVER_KEYSTORE"
-echo "Client truststore: $CLIENT_TRUSTSTORE"
-echo "Password for both stores: $KEY_PASSWORD"
-echo "======================================================"
-
-# Make the script executable
-chmod +x $0
-
-echo "You can now run the secure server and client using the provided scripts."
+echo "Certificate generation complete!"
+echo "  - Server keystore: $KEYSTORE"
+echo "  - Client truststore: $TRUSTSTORE"
+echo ""
+echo "For testing purposes:"
+echo "  - Keystore password: $KEYSTORE_PASSWORD"
+echo "  - Truststore password: $TRUSTSTORE_PASSWORD"
+echo ""
+echo "Note: In a production environment, use strong, unique passwords and proper certificate authorities."

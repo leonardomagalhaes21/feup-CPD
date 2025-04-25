@@ -5,9 +5,13 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.net.ConnectException;
+import java.net.SocketException;
 import java.security.KeyStore;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
@@ -21,8 +25,9 @@ public class Client {
     private BufferedReader in;
     private PrintWriter out;
     private BufferedReader consoleIn;
-    private boolean isRunning;
-    private boolean isAuthenticated = false;
+    private final AtomicBoolean isRunning = new AtomicBoolean(false);
+    private final AtomicBoolean isAuthenticated = new AtomicBoolean(false);
+    private ExecutorService executor;
     private String username;
 
     // SSL configuration
@@ -38,66 +43,104 @@ public class Client {
 
     public void start() {
         try {
-            // Connect to the server using SSL
-            socket = createSSLSocket();
-            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            out = new PrintWriter(socket.getOutputStream(), true);
-            isRunning = true;
+            System.out.println("Connecting to server at " + serverAddress + ":" + serverPort + "...");
+
+            try {
+                // Connect to the server using SSL
+                socket = createSSLSocket();
+                in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                out = new PrintWriter(socket.getOutputStream(), true);
+            } catch (ConnectException e) {
+                System.err.println("Error: Could not connect to server at " + serverAddress + ":" + serverPort);
+                System.err.println("Please check that the server is running and the address is correct.");
+                return;
+            } catch (Exception e) {
+                System.err.println("Connection error: " + e.getMessage());
+                return;
+            }
+
+            isRunning.set(true);
+
+            // Register shutdown hook for graceful shutdown
+            Runtime.getRuntime().addShutdownHook(new Thread(this::shutdown));
 
             System.out.println("Connected securely to server at " + serverAddress + ":" + serverPort);
 
             // Start a virtual thread to read server responses
-            ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+            executor = Executors.newVirtualThreadPerTaskExecutor();
             executor.submit(this::readServerResponses);
 
             // Wait for initial server welcome message
-            Thread.sleep(100);
+            Thread.sleep(500);
 
             // Authentication loop
-            while (isRunning && !isAuthenticated) {
-                System.out.print("Please login (/login username password): ");
-                String loginCommand = consoleIn.readLine();
+            while (isRunning.get() && !isAuthenticated.get()) {
+                try {
+                    System.out.print("Please login (/login username password): ");
+                    String loginCommand = consoleIn.readLine();
 
-                // Validate login command format
-                if (!loginCommand.startsWith("/login ")) {
-                    System.out.println("Invalid command format. Use: /login username password");
-                    continue;
-                }
+                    if (loginCommand == null || loginCommand.equalsIgnoreCase("/exit")) {
+                        System.out.println("Exiting...");
+                        shutdown();
+                        return;
+                    }
 
-                // Send login command to server
-                out.println(loginCommand);
+                    // Validate login command format
+                    if (!loginCommand.startsWith("/login ")) {
+                        System.out.println("Invalid command format. Use: /login username password");
+                        continue;
+                    }
 
-                // Username is everything after "/login " and before the next space
-                String[] parts = loginCommand.split("\\s+", 3);
-                if (parts.length >= 2) {
+                    // Parse username for later reference
+                    String[] parts = loginCommand.split("\\s+", 3);
+                    if (parts.length < 3) {
+                        System.out.println("Invalid login format. Use: /login username password");
+                        continue;
+                    }
+
                     this.username = parts[1];
-                }
 
-                // Wait for authentication response (handled in readServerResponses)
-                // Sleep a bit to allow response to be processed
-                Thread.sleep(500);
+                    // Send login command to server
+                    out.println(loginCommand);
+
+                    // Wait for authentication response (handled in readServerResponses)
+                    // Sleep a bit to allow response to be processed
+                    Thread.sleep(1000);
+                } catch (IOException e) {
+                    System.err.println("Error reading from console: " + e.getMessage());
+                    shutdown();
+                    return;
+                }
             }
 
             // Main thread reads user input and sends to server if authenticated
-            if (isAuthenticated) {
-                System.out.println("You are now logged in as " + username + ". You can start chatting.");
+            if (isAuthenticated.get()) {
+                System.out.println("\n============================================");
+                System.out.println("You are now logged in as " + username);
+                System.out.println("Type /help to see available commands");
+                System.out.println("Type /exit to disconnect from the server");
+                System.out.println("============================================\n");
+
                 String userInput;
-                while (isRunning && (userInput = consoleIn.readLine()) != null) {
+                while (isRunning.get() && (userInput = consoleIn.readLine()) != null) {
+                    // Check for client-side exit command
+                    if (userInput.equalsIgnoreCase("/exit")) {
+                        System.out.println("Disconnecting from server...");
+                        shutdown();
+                        break;
+                    }
+
+                    // Send the input to the server
                     out.println(userInput);
                 }
             }
-
-            executor.shutdown();
         } catch (IOException e) {
             System.err.println("Client error: " + e.getMessage());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             System.err.println("Client interrupted: " + e.getMessage());
-        } catch (Exception e) {
-            System.err.println("SSL error: " + e.getMessage());
-            e.printStackTrace();
         } finally {
-            closeResources();
+            shutdown();
         }
     }
 
@@ -105,75 +148,122 @@ public class Client {
      * Creates an SSL socket with the appropriate SSL configuration.
      */
     private SSLSocket createSSLSocket() throws Exception {
-        // Load the truststore that contains the trusted certificates
-        KeyStore trustStore = KeyStore.getInstance("JKS");
-        trustStore.load(new FileInputStream(TRUSTSTORE_PATH), TRUSTSTORE_PASSWORD.toCharArray());
+        try {
+            // Load the truststore that contains the trusted certificates
+            KeyStore trustStore = KeyStore.getInstance("JKS");
+            try (FileInputStream fis = new FileInputStream(TRUSTSTORE_PATH)) {
+                trustStore.load(fis, TRUSTSTORE_PASSWORD.toCharArray());
+            }
 
-        // Create trust manager factory using the truststore
-        TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-        tmf.init(trustStore);
+            // Create trust manager factory using the truststore
+            TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            tmf.init(trustStore);
 
-        // Initialize SSLContext with the trust managers
-        SSLContext sslContext = SSLContext.getInstance(SSL_PROTOCOL);
-        sslContext.init(null, tmf.getTrustManagers(), null);
+            // Initialize SSLContext with the trust managers
+            SSLContext sslContext = SSLContext.getInstance(SSL_PROTOCOL);
+            sslContext.init(null, tmf.getTrustManagers(), null);
 
-        // Create the SSL socket factory
-        SSLSocketFactory socketFactory = sslContext.getSocketFactory();
+            // Create the SSL socket factory
+            SSLSocketFactory socketFactory = sslContext.getSocketFactory();
 
-        // Create and configure the SSL socket
-        SSLSocket sslSocket = (SSLSocket) socketFactory.createSocket(serverAddress, serverPort);
+            // Create and configure the SSL socket
+            SSLSocket sslSocket = (SSLSocket) socketFactory.createSocket(serverAddress, serverPort);
 
-        // Configure SSL parameters if needed
-        // For example, you might want to specify which cipher suites or protocols are enabled
-        // Begin the SSL handshake
-        sslSocket.startHandshake();
+            // Begin the SSL handshake
+            sslSocket.startHandshake();
 
-        return sslSocket;
+            return sslSocket;
+        } catch (IOException e) {
+            throw new Exception("Failed to create SSL socket: " + e.getMessage(), e);
+        } catch (Exception e) {
+            throw new Exception("SSL configuration error: " + e.getMessage(), e);
+        }
     }
 
     private void readServerResponses() {
         try {
             String response;
-            while (isRunning && (response = in.readLine()) != null) {
+            while (isRunning.get() && (response = in.readLine()) != null) {
                 // Check for authentication responses
                 if (response.startsWith("AUTH_OK:")) {
-                    isAuthenticated = true;
+                    isAuthenticated.set(true);
                     System.out.println(response);
                 } else if (response.startsWith("AUTH_FAIL:")) {
                     System.out.println(response);
                     // If too many failed attempts, server will close the connection
                     if (response.contains("Too many failed")) {
-                        isRunning = false;
+                        shutdown();
                     }
                 } else {
                     // Display the server message
                     System.out.println(response);
                 }
             }
+        } catch (SocketException e) {
+            if (isRunning.get()) {
+                System.err.println("Connection to server lost: " + e.getMessage());
+            }
         } catch (IOException e) {
-            if (isRunning) {
+            if (isRunning.get()) {
                 System.err.println("Error reading from server: " + e.getMessage());
             }
+        } finally {
+            if (isRunning.get()) {
+                System.out.println("Server connection closed.");
+                shutdown();
+            }
         }
-        isRunning = false;
+    }
+
+    public void shutdown() {
+        // Only execute shutdown once
+        if (!isRunning.getAndSet(false)) {
+            return;
+        }
+
+        // Close executor
+        if (executor != null) {
+            executor.shutdown();
+            try {
+                if (!executor.awaitTermination(2, TimeUnit.SECONDS)) {
+                    executor.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                executor.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+        }
+
+        // Close resources
+        closeResources();
+
+        System.out.println("Disconnected from server. Goodbye!");
     }
 
     private void closeResources() {
         try {
+            if (out != null) {
+                out.println("/exit"); // Try to notify server before disconnecting
+                out.close();
+            }
             if (in != null) {
                 in.close();
             }
-            if (out != null) {
-                out.close();
-            }
-            if (socket != null) {
+            if (socket != null && !socket.isClosed()) {
                 socket.close();
             }
+        } catch (IOException e) {
+            // Just log and continue with shutdown
+            System.err.println("Error closing network resources: " + e.getMessage());
+        }
+
+        // Always close console reader last
+        try {
             if (consoleIn != null) {
                 consoleIn.close();
             }
         } catch (IOException e) {
-            System.err.println("Error closing resources: " + e.getMessage());
+            System.err.println("Error closing console reader: " + e.getMessage());
         }
     }
 

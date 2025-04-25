@@ -3,6 +3,7 @@ package chat.server;
 import chat.server.ai.OllamaService;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -116,49 +117,61 @@ public class Room {
     }
 
     private void generateAiResponse(List<String> historySnapshot, ClientHandler sender) {
-        ollamaService.generateResponse(
-                aiPrompt,
-                historySnapshot,
-                // onSuccess consumer
-                aiResponse -> {
-                    // Format the AI's response
-                    String formattedResponse = "Bot: " + aiResponse;
+        try {
+            ollamaService.generateResponse(
+                    aiPrompt,
+                    historySnapshot,
+                    // onSuccess consumer
+                    aiResponse -> {
+                        // Format the AI's response
+                        String formattedResponse = "Bot: " + aiResponse;
 
-                    // Add the bot's response to history
-                    lock.writeLock().lock();
-                    try {
-                        messageHistory.add(formattedResponse);
-                        // Keep history size limited
-                        if (messageHistory.size() > MAX_HISTORY_SIZE) {
-                            messageHistory.remove(0);
+                        // Add the bot's response to history
+                        lock.writeLock().lock();
+                        try {
+                            messageHistory.add(formattedResponse);
+                            // Keep history size limited
+                            if (messageHistory.size() > MAX_HISTORY_SIZE) {
+                                messageHistory.remove(0);
+                            }
+                        } finally {
+                            lock.writeLock().unlock();
                         }
-                    } finally {
-                        lock.writeLock().unlock();
-                    }
 
-                    // Broadcast bot's response to all members
-                    Set<ClientHandler> membersCopy;
-                    lock.readLock().lock();
-                    try {
-                        membersCopy = new HashSet<>(members);
-                    } finally {
-                        lock.readLock().unlock();
-                    }
+                        // Clean up disconnected clients before broadcasting
+                        cleanDisconnectedClients();
 
-                    for (ClientHandler member : membersCopy) {
-                        member.sendMessage(formattedResponse);
-                    }
-                },
-                // onError consumer
-                errorMsg -> {
-                    System.err.println("AI error in room " + name + ": " + errorMsg);
+                        // Broadcast bot's response to all members
+                        Set<ClientHandler> membersCopy;
+                        lock.readLock().lock();
+                        try {
+                            membersCopy = new HashSet<>(members);
+                        } finally {
+                            lock.readLock().unlock();
+                        }
 
-                    // Notify the room of the error (only the sender)
-                    if (sender != null) {
-                        sender.sendMessage("Bot error: Unable to generate response. Please try again later.");
+                        for (ClientHandler member : membersCopy) {
+                            if (member.isConnected()) {
+                                member.sendMessage(formattedResponse);
+                            }
+                        }
+                    },
+                    // onError consumer
+                    errorMsg -> {
+                        System.err.println("AI error in room " + name + ": " + errorMsg);
+
+                        // Notify the room of the error (only the sender)
+                        if (sender != null && sender.isConnected()) {
+                            sender.sendMessage("Bot error: Unable to generate response. Please try again later.");
+                        }
                     }
-                }
-        );
+            );
+        } catch (Exception e) {
+            System.err.println("Failed to request AI response: " + e.getMessage());
+            if (sender != null && sender.isConnected()) {
+                sender.sendMessage("Bot error: Unable to connect to AI service. Please try again later.");
+            }
+        }
     }
 
     public void addMessage(String message) {
@@ -185,8 +198,35 @@ public class Room {
         }
     }
 
+    /**
+     * Removes any disconnected clients from the room
+     *
+     * @return Number of clients removed
+     */
+    public int cleanDisconnectedClients() {
+        lock.writeLock().lock();
+        try {
+            int removedCount = 0;
+            Iterator<ClientHandler> iterator = members.iterator();
+            while (iterator.hasNext()) {
+                ClientHandler client = iterator.next();
+                if (!client.isConnected()) {
+                    iterator.remove();
+                    removedCount++;
+                    System.out.println("Removed disconnected client: " + client.getUsername() + " from room: " + name);
+                }
+            }
+            return removedCount;
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
     public void broadcast(String message, ClientHandler sender) {
-        // First, add the message to history with a write lock and trigger AI response if needed
+        // First, clean up any disconnected clients
+        cleanDisconnectedClients();
+
+        // Add the message to history with a write lock and trigger AI response if needed
         addMessage(message, sender);
 
         // Then get a snapshot of members with a read lock
@@ -201,8 +241,13 @@ public class Room {
         // Broadcast to all members in the snapshot except the sender
         // No lock needed here as we're working on a local copy
         for (ClientHandler member : membersCopy) {
-            if (member != sender) {
-                member.sendMessage(message);
+            try {
+                if (member != sender && member.isConnected()) {
+                    member.sendMessage(message);
+                }
+            } catch (Exception e) {
+                System.err.println("Error sending message to " + member.getUsername() + ": " + e.getMessage());
+                // Will be cleaned up on next broadcast/cleanup cycle
             }
         }
     }
