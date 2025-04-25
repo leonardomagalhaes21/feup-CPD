@@ -8,6 +8,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class Server {
 
@@ -18,6 +20,7 @@ public class Server {
     private boolean isRunning;
     private AuthenticationService authService;
     private final Map<String, Room> rooms = new HashMap<>();
+    private final ReadWriteLock roomsLock = new ReentrantReadWriteLock();
 
     public Server(int port, String userFilePath) {
         this.port = port;
@@ -63,22 +66,37 @@ public class Server {
         clientHandler.handle();
     }
 
-    public synchronized Room createRoom(String roomName) {
-        if (rooms.containsKey(roomName)) {
-            return null; // Room already exists
+    public Room createRoom(String roomName) {
+        roomsLock.writeLock().lock();
+        try {
+            if (rooms.containsKey(roomName)) {
+                return null; // Room already exists
+            }
+
+            Room newRoom = new Room(roomName);
+            rooms.put(roomName, newRoom);
+            return newRoom;
+        } finally {
+            roomsLock.writeLock().unlock();
         }
-
-        Room newRoom = new Room(roomName);
-        rooms.put(roomName, newRoom);
-        return newRoom;
     }
 
-    public synchronized Room getRoom(String roomName) {
-        return rooms.get(roomName);
+    public Room getRoom(String roomName) {
+        roomsLock.readLock().lock();
+        try {
+            return rooms.get(roomName);
+        } finally {
+            roomsLock.readLock().unlock();
+        }
     }
 
-    public synchronized Map<String, Room> getRooms() {
-        return new HashMap<>(rooms); // Return a copy to prevent concurrent modification
+    public Map<String, Room> getRooms() {
+        roomsLock.readLock().lock();
+        try {
+            return new HashMap<>(rooms); // Return a copy to prevent concurrent modification
+        } finally {
+            roomsLock.readLock().unlock();
+        }
     }
 
     public void stop() {

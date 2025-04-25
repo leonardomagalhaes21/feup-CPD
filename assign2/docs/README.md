@@ -6,14 +6,14 @@ This project implements a multi-user, room-based chat server and client in Java 
 *   Dynamic creation and joining of chat rooms
 *   Real-time message broadcasting within rooms
 *   Special AI-powered rooms that interact with a local LLM (Ollama) (Coming soon)
-*   Robust concurrency handling using Java Virtual Threads and explicit `java.util.concurrent.locks` (Coming soon)
+*   Robust concurrency handling using Java Virtual Threads and explicit `java.util.concurrent.locks`
 *   Secure communication using TLS/SSL (Coming soon)
 
 ## Current Implementation Status
 * ✅ Phase 1: Basic Server & Client Connection
 * ✅ Phase 2: User Authentication
 * ✅ Phase 3: Basic Room Management & Chat
-* ⏳ Phase 4: Concurrency Control (Not started)
+* ✅ Phase 4: Concurrency Control
 * ⏳ Phase 5: AI Rooms (Not started)
 * ⏳ Phase 6: Secure Communication (TLS/SSL) (Not started)
 
@@ -24,8 +24,8 @@ This project implements a multi-user, room-based chat server and client in Java 
 *   **Chat Rooms:** Users can list available rooms, join existing ones, or create new ones.
 *   **Message Broadcasting:** Messages sent in a room are broadcast to all members of that room.
 *   **Room Notifications:** Users are notified when others join or leave rooms.
+*   **Thread-safe Design:** Uses `ReentrantReadWriteLock` for concurrent access to shared data.
 *   **AI Integration:** Option to create "AI rooms" where a specified prompt and the conversation history are sent to a local Ollama instance (Coming soon).
-*   **Explicit Locking:** Demonstrates manual concurrency control using `ReentrantReadWriteLock` (Coming soon).
 *   **Secure Communication:** Uses TLS/SSL to encrypt communication (Coming soon).
 
 ## How to Run
@@ -109,6 +109,18 @@ java -cp out/production/assign2 chat.client.Client [server_address] [port]
    - Verify that join/leave notifications are broadcast to room members
    - Confirm recent message history is shown when joining a room
 
+### Phase 4: Concurrency Control
+1. Start the server: `./scripts/run_server.sh`
+2. Start multiple clients: `./scripts/run_client.sh` (at least 5-10 for stress testing)
+3. Log in with different credentials on each client
+4. Perform rapid operations simultaneously from different clients:
+   - Create multiple rooms in quick succession
+   - Have clients join and leave rooms rapidly
+   - Send messages to rooms with many concurrent users
+   - List rooms frequently while other operations are happening
+5. Observe that all operations complete without errors, race conditions, or deadlocks
+6. Verify that all messages are delivered properly and room state remains consistent
+
 ## User Credentials for Testing
 
 The system comes with predefined users for testing:
@@ -172,15 +184,16 @@ The system uses a client-server model over TCP/IP.
 1. The **Server** listens for incoming connections on a specified port and creates a default "general" room at startup.
 2. Upon connection, the server creates a **Virtual Thread** to handle the client independently.
 3. The client must first **authenticate**. The server verifies credentials against a predefined list from the users file.
-4. Authenticated clients can **interact with rooms**. The server maintains a global Map of rooms.
-5. Each **Room** object manages its own set of members and maintains a message history (limited to the most recent 100 messages).
-6. Users can create their own rooms, join existing rooms, or leave rooms using commands.
-7. When a client sends a **message**, the server adds it to the room's history and broadcasts it to all room members.
-8. The system provides notifications when users join or leave rooms.
+4. Authenticated clients can **interact with rooms**. The server maintains a global Map of rooms protected by a `ReentrantReadWriteLock`.
+5. Each **Room** object manages its own set of members and maintains a message history (limited to the most recent 100 messages), protected by its own `ReentrantReadWriteLock`.
+6. For operations that update room state (adding/removing users, adding messages), the room's write lock is acquired.
+7. For operations that only read room state (listing members, retrieving history), the room's read lock is acquired.
+8. When broadcasting messages, a snapshot of room members is taken under a read lock, then the lock is released before sending messages to improve concurrency.
+9. Users can create their own rooms, join existing rooms, or leave rooms using commands.
+10. The system provides notifications when users join or leave rooms.
 
 ## Future Enhancements
 
-- **Phase 4:** Concurrency control using ReentrantReadWriteLock for thread-safe room operations
 - **Phase 5:** AI-powered rooms with Ollama integration 
 - **Phase 6:** Secure communication using TLS/SSL encryption
 - **Phase 7:** Additional refinements and error handling enhancements
