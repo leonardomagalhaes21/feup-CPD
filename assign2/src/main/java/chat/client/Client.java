@@ -103,7 +103,8 @@ public class Client {
                         isRunning = false;
                     }
                 } else {
-                    System.out.println("Server: " + response);
+                    // Display the server message
+                    System.out.println(response);
                 }
             }
         } catch (IOException e) {

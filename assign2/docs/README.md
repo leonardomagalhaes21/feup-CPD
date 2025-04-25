@@ -5,7 +5,7 @@ This project implements a multi-user, room-based chat server and client in Java 
 *   User authentication
 *   Dynamic creation and joining of chat rooms
 *   Real-time message broadcasting within rooms
-*   Special AI-powered rooms that interact with a local LLM (Ollama) (Coming soon)
+*   Special AI-powered rooms that interact with a local LLM (Ollama)
 *   Robust concurrency handling using Java Virtual Threads and explicit `java.util.concurrent.locks`
 *   Secure communication using TLS/SSL (Coming soon)
 
@@ -14,7 +14,7 @@ This project implements a multi-user, room-based chat server and client in Java 
 * ✅ Phase 2: User Authentication
 * ✅ Phase 3: Basic Room Management & Chat
 * ✅ Phase 4: Concurrency Control
-* ⏳ Phase 5: AI Rooms (Not started)
+* ✅ Phase 5: AI Rooms
 * ⏳ Phase 6: Secure Communication (TLS/SSL) (Not started)
 
 ## Features
@@ -25,14 +25,49 @@ This project implements a multi-user, room-based chat server and client in Java 
 *   **Message Broadcasting:** Messages sent in a room are broadcast to all members of that room.
 *   **Room Notifications:** Users are notified when others join or leave rooms.
 *   **Thread-safe Design:** Uses `ReentrantReadWriteLock` for concurrent access to shared data.
-*   **AI Integration:** Option to create "AI rooms" where a specified prompt and the conversation history are sent to a local Ollama instance (Coming soon).
+*   **AI Integration:** Create "AI rooms" where a specified prompt and conversation history are sent to a local Ollama instance, generating AI responses in real-time.
 *   **Secure Communication:** Uses TLS/SSL to encrypt communication (Coming soon).
 
 ## How to Run
 
 **Prerequisites:**
 *   Java Development Kit (JDK) SE 21 or later.
-*   (Optional) Ollama installed and running locally if using AI rooms (for Phase 5).
+*   Ollama installed and running locally for AI rooms. 
+
+### Setting Up Ollama for AI Rooms
+
+To use the AI room functionality, you need to have Ollama running in Docker:
+
+1. Install Docker if you don't have it:
+```bash
+# Update package list
+sudo apt update
+
+# Install Docker
+sudo apt install apt-transport-https ca-certificates curl software-properties-common
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+sudo apt update
+sudo apt install docker-ce docker-ce-cli containerd.io
+sudo usermod -aG docker $USER
+```
+
+2. Run the Ollama container:
+```bash
+sudo docker run -d -v ollama:/root/.ollama -p 11434:11434 --name ollama14 ollama/ollama
+```
+
+3. Pull and start the llama3 model:
+```bash
+sudo docker exec -it ollama14 ollama run llama3
+```
+
+4. Verify that Ollama is working with a test query:
+```bash
+curl -X POST http://localhost:11434/api/generate -d '{"model": "llama3", "prompt": "why is the sky blue?"}'
+```
+
+5. Keep the Ollama container running while using the chat application.
 
 ### Using the Provided Scripts
 
@@ -121,6 +156,23 @@ java -cp out/production/assign2 chat.client.Client [server_address] [port]
 5. Observe that all operations complete without errors, race conditions, or deadlocks
 6. Verify that all messages are delivered properly and room state remains consistent
 
+### Phase 5: AI Rooms
+1. Make sure Ollama is running in Docker (see setup instructions above)
+2. Start the server: `./scripts/run_server.sh`
+3. Start multiple clients: `./scripts/run_client.sh` (at least 2)
+4. Log in with different credentials
+5. Test AI room creation and interaction:
+   - Create an AI room with a prompt: `/create airoom You are a helpful assistant named ChatBot`
+   - Join the AI room: `/join airoom`
+   - Send messages in the room and observe how the AI (Bot) responds based on the prompt
+   - Check that the AI responses appear to all users in the room
+6. Test error handling:
+   - Try creating an AI room with an empty prompt
+   - Temporarily stop the Ollama Docker container and see how the chat application handles the error
+7. Test regular rooms alongside AI rooms:
+   - Verify that regular rooms still work normally while AI rooms are active
+   - Confirm that AI responses only appear in the AI rooms
+
 ## User Credentials for Testing
 
 The system comes with predefined users for testing:
@@ -135,14 +187,16 @@ The system comes with predefined users for testing:
 - `/login <username> <password>`: Authenticate with the server
 
 **Room Management:**
-- `/list`: List all available chat rooms
-- `/create <roomname>`: Create a new chat room
+- `/list`: List all available chat rooms (AI rooms are marked as [AI Room])
+- `/create <roomname>`: Create a new regular chat room
+- `/create <roomname> <ai_prompt>`: Create a new AI-powered room with the specified prompt
 - `/join <roomname>`: Join an existing chat room
 - `/leave`: Leave the current room
 - `/help`: Show available commands
 
 **Messaging:**
 - Any text that doesn't start with `/` is sent as a message to the current room
+- In AI rooms, each message will trigger an AI response based on the room's prompt and conversation history
 
 ## Project Structure
 
@@ -189,11 +243,14 @@ The system uses a client-server model over TCP/IP.
 6. For operations that update room state (adding/removing users, adding messages), the room's write lock is acquired.
 7. For operations that only read room state (listing members, retrieving history), the room's read lock is acquired.
 8. When broadcasting messages, a snapshot of room members is taken under a read lock, then the lock is released before sending messages to improve concurrency.
-9. Users can create their own rooms, join existing rooms, or leave rooms using commands.
-10. The system provides notifications when users join or leave rooms.
+9. **AI Rooms** are special rooms that send user messages to the Ollama API:
+   - When a message is added to an AI room, the conversation history is captured
+   - An asynchronous HTTP request is sent to the Ollama API with the room's prompt and history
+   - When the AI response is received, it's formatted as "Bot: [response]" and broadcast to all room members
+   - All AI operations properly respect the concurrency model with appropriate locking
+10. Users can create their own regular or AI rooms, join existing rooms, or leave rooms using commands.
 
 ## Future Enhancements
 
-- **Phase 5:** AI-powered rooms with Ollama integration 
 - **Phase 6:** Secure communication using TLS/SSL encryption
 - **Phase 7:** Additional refinements and error handling enhancements

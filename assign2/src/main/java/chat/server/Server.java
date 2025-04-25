@@ -81,6 +81,21 @@ public class Server {
         }
     }
 
+    public Room createAiRoom(String roomName, String aiPrompt) {
+        roomsLock.writeLock().lock();
+        try {
+            if (rooms.containsKey(roomName)) {
+                return null; // Room already exists
+            }
+
+            Room newRoom = new Room(roomName, true, aiPrompt);
+            rooms.put(roomName, newRoom);
+            return newRoom;
+        } finally {
+            roomsLock.writeLock().unlock();
+        }
+    }
+
     public Room getRoom(String roomName) {
         roomsLock.readLock().lock();
         try {

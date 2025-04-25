@@ -1,5 +1,6 @@
 package chat.server;
 
+import chat.server.ai.OllamaService;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -14,18 +15,42 @@ public class Room {
     private final List<String> messageHistory;
     private static final int MAX_HISTORY_SIZE = 100;  // Limit message history size
 
+    // AI room properties
+    private final boolean isAiRoom;
+    private final String aiPrompt;
+    private final OllamaService ollamaService;
+
     // Read-write lock for thread safety
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
 
     public Room(String name) {
+        this(name, false, null);
+    }
+
+    public Room(String name, boolean isAiRoom, String aiPrompt) {
         this.name = name;
         this.members = new HashSet<>();
         this.messageHistory = new ArrayList<>();
+        this.isAiRoom = isAiRoom;
+        this.aiPrompt = aiPrompt;
+        this.ollamaService = isAiRoom ? new OllamaService() : null;
+
+        if (isAiRoom) {
+            System.out.println("Created AI room: " + name + " with prompt: " + aiPrompt);
+        }
     }
 
     public String getName() {
         // Name is immutable, no lock needed
         return name;
+    }
+
+    public boolean isAiRoom() {
+        return isAiRoom;
+    }
+
+    public String getAiPrompt() {
+        return aiPrompt;
     }
 
     public boolean addMember(ClientHandler client) {
@@ -65,17 +90,79 @@ public class Room {
         }
     }
 
-    public void addMessage(String message) {
+    public void addMessage(String message, ClientHandler sender) {
+        // First, add the user message to history
         lock.writeLock().lock();
+        List<String> historySnapshot = null;
         try {
             messageHistory.add(message);
             // Keep history size limited
             if (messageHistory.size() > MAX_HISTORY_SIZE) {
                 messageHistory.remove(0);  // Remove oldest message
             }
+
+            if (isAiRoom) {
+                // Take a snapshot of the message history while holding the lock
+                historySnapshot = new ArrayList<>(messageHistory);
+            }
         } finally {
             lock.writeLock().unlock();
         }
+
+        // If this is an AI room, generate a response
+        if (isAiRoom && ollamaService != null && historySnapshot != null) {
+            generateAiResponse(historySnapshot, sender);
+        }
+    }
+
+    private void generateAiResponse(List<String> historySnapshot, ClientHandler sender) {
+        ollamaService.generateResponse(
+                aiPrompt,
+                historySnapshot,
+                // onSuccess consumer
+                aiResponse -> {
+                    // Format the AI's response
+                    String formattedResponse = "Bot: " + aiResponse;
+
+                    // Add the bot's response to history
+                    lock.writeLock().lock();
+                    try {
+                        messageHistory.add(formattedResponse);
+                        // Keep history size limited
+                        if (messageHistory.size() > MAX_HISTORY_SIZE) {
+                            messageHistory.remove(0);
+                        }
+                    } finally {
+                        lock.writeLock().unlock();
+                    }
+
+                    // Broadcast bot's response to all members
+                    Set<ClientHandler> membersCopy;
+                    lock.readLock().lock();
+                    try {
+                        membersCopy = new HashSet<>(members);
+                    } finally {
+                        lock.readLock().unlock();
+                    }
+
+                    for (ClientHandler member : membersCopy) {
+                        member.sendMessage(formattedResponse);
+                    }
+                },
+                // onError consumer
+                errorMsg -> {
+                    System.err.println("AI error in room " + name + ": " + errorMsg);
+
+                    // Notify the room of the error (only the sender)
+                    if (sender != null) {
+                        sender.sendMessage("Bot error: Unable to generate response. Please try again later.");
+                    }
+                }
+        );
+    }
+
+    public void addMessage(String message) {
+        addMessage(message, null);
     }
 
     public List<String> getRecentMessages(int count) {
@@ -99,8 +186,8 @@ public class Room {
     }
 
     public void broadcast(String message, ClientHandler sender) {
-        // First, add the message to history with a write lock
-        addMessage(message);
+        // First, add the message to history with a write lock and trigger AI response if needed
+        addMessage(message, sender);
 
         // Then get a snapshot of members with a read lock
         Set<ClientHandler> membersCopy;

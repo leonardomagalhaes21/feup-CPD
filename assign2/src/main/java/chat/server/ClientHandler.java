@@ -104,7 +104,7 @@ public class ClientHandler {
         while ((line = in.readLine()) != null) {
             if (line.startsWith("/")) {
                 // Handle commands
-                String[] parts = line.split("\\s+", 2);
+                String[] parts = line.split("\\s+", 3); // Split into at most 3 parts for AI room
                 String command = parts[0].toLowerCase();
 
                 switch (command) {
@@ -113,9 +113,11 @@ public class ClientHandler {
                         break;
                     case "/create":
                         if (parts.length < 2) {
-                            out.println("ERROR: Usage: /create <roomname>");
-                        } else {
-                            createRoom(parts[1]);
+                            out.println("ERROR: Usage: /create <roomname> [ai_prompt]");
+                        } else if (parts.length == 2) {
+                            createRegularRoom(parts[1]);
+                        } else { // parts.length == 3
+                            createAiRoom(parts[1], parts[2]);
                         }
                         break;
                     case "/join":
@@ -148,18 +150,25 @@ public class ClientHandler {
         Map<String, Room> rooms = server.getRooms();
 
         if (rooms.isEmpty()) {
-            out.println("No rooms available. Create one with /create <roomname>");
+            out.println("No rooms available. Create one with /create <roomname> [ai_prompt]");
             return;
         }
 
         out.println("Available rooms:");
         for (Map.Entry<String, Room> entry : rooms.entrySet()) {
             Room room = entry.getValue();
-            out.println("- " + room.getName() + " (" + room.getMemberCount() + " users)");
+            String roomInfo = "- " + room.getName() + " (" + room.getMemberCount() + " users)";
+
+            // Add AI room indicator if it's an AI room
+            if (room.isAiRoom()) {
+                roomInfo += " [AI Room]";
+            }
+
+            out.println(roomInfo);
         }
     }
 
-    private void createRoom(String roomName) {
+    private void createRegularRoom(String roomName) {
         roomName = roomName.trim();
 
         if (roomName.isEmpty()) {
@@ -173,6 +182,45 @@ public class ClientHandler {
             out.println("ERROR: Room '" + roomName + "' already exists");
         } else {
             out.println("Room '" + roomName + "' created successfully");
+        }
+    }
+
+    private void createAiRoom(String roomName, String aiPrompt) {
+        roomName = roomName.trim();
+
+        if (roomName.isEmpty()) {
+            out.println("ERROR: Room name cannot be empty");
+            return;
+        }
+
+        if (aiPrompt.isEmpty()) {
+            out.println("ERROR: AI prompt cannot be empty");
+            return;
+        }
+
+        Room newRoom = server.createAiRoom(roomName, aiPrompt);
+
+        if (newRoom == null) {
+            out.println("ERROR: Room '" + roomName + "' already exists");
+        } else {
+            out.println("AI Room '" + roomName + "' created successfully with prompt: " + aiPrompt);
+        }
+    }
+
+    private void createRoom(String input) {
+        String[] parts = input.split("\\s+", 2);
+        String roomName = parts[0].trim();
+
+        if (roomName.isEmpty()) {
+            out.println("ERROR: Room name cannot be empty");
+            return;
+        }
+
+        // If there's additional text after the room name, it's an AI prompt
+        if (parts.length > 1) {
+            createAiRoom(roomName, parts[1]);
+        } else {
+            createRegularRoom(roomName);
         }
     }
 
@@ -197,7 +245,14 @@ public class ClientHandler {
         currentRoom = room;
 
         // Confirm to client
-        out.println("You joined room: " + roomName);
+        StringBuilder joinMessage = new StringBuilder();
+        joinMessage.append("You joined room: ").append(roomName);
+
+        if (room.isAiRoom()) {
+            joinMessage.append(" [AI Room with prompt: ").append(room.getAiPrompt()).append("]");
+        }
+
+        out.println(joinMessage.toString());
 
         // Send recent message history
         List<String> recentMessages = room.getRecentMessages(RECENT_MESSAGES_COUNT);
@@ -247,12 +302,14 @@ public class ClientHandler {
     private void sendHelp() {
         out.println("Available commands:");
         out.println("/list - List available rooms");
-        out.println("/create <roomname> - Create a new room");
+        out.println("/create <roomname> - Create a new regular room");
+        out.println("/create <roomname> <ai_prompt> - Create a new AI room with specified prompt");
         out.println("/join <roomname> - Join an existing room");
         out.println("/leave - Leave current room");
         out.println("/help - Show this help message");
         out.println("");
         out.println("To send a message, simply type and press Enter when in a room");
+        out.println("In AI rooms, the AI will respond to your messages based on the room's prompt");
     }
 
     public void sendMessage(String message) {
