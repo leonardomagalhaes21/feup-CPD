@@ -27,11 +27,19 @@ if [ $? -eq 0 ]; then
     # Default server address and port
     SERVER=${1:-"localhost"}
     PORT=${2:-8888}
+    SSL_DEBUG=${3:-"false"}
     
     echo "Connecting to: $SERVER:$PORT"
     
+    # Set SSL debug options if requested
+    SSL_OPTS=""
+    if [ "$SSL_DEBUG" = "true" ]; then
+        echo "SSL debugging enabled"
+        SSL_OPTS="-Djavax.net.debug=ssl,handshake"
+    fi
+    
     # Run the client with arguments (server address and port)
-    java -cp out/production/assign2 chat.client.Client $SERVER $PORT
+    java $SSL_OPTS -cp out/production/assign2 chat.client.Client $SERVER $PORT
 else
     echo "Compilation failed. Please fix the errors and try again."
 fi

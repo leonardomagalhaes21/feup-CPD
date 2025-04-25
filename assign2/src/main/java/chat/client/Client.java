@@ -1,24 +1,34 @@
 package chat.client;
 
 import java.io.BufferedReader;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
-import java.net.Socket;
+import java.security.KeyStore;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.SSLSocketFactory;
+import javax.net.ssl.TrustManagerFactory;
 
 public class Client {
 
     private final String serverAddress;
     private final int serverPort;
-    private Socket socket;
+    private SSLSocket socket;
     private BufferedReader in;
     private PrintWriter out;
     private BufferedReader consoleIn;
     private boolean isRunning;
     private boolean isAuthenticated = false;
     private String username;
+
+    // SSL configuration
+    private static final String TRUSTSTORE_PATH = "resources/main/client_truststore.jks";
+    private static final String TRUSTSTORE_PASSWORD = "password";
+    private static final String SSL_PROTOCOL = "TLS";
 
     public Client(String serverAddress, int serverPort) {
         this.serverAddress = serverAddress;
@@ -28,13 +38,13 @@ public class Client {
 
     public void start() {
         try {
-            // Connect to the server
-            socket = new Socket(serverAddress, serverPort);
+            // Connect to the server using SSL
+            socket = createSSLSocket();
             in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             out = new PrintWriter(socket.getOutputStream(), true);
             isRunning = true;
 
-            System.out.println("Connected to server at " + serverAddress + ":" + serverPort);
+            System.out.println("Connected securely to server at " + serverAddress + ":" + serverPort);
 
             // Start a virtual thread to read server responses
             ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
@@ -83,9 +93,42 @@ public class Client {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             System.err.println("Client interrupted: " + e.getMessage());
+        } catch (Exception e) {
+            System.err.println("SSL error: " + e.getMessage());
+            e.printStackTrace();
         } finally {
             closeResources();
         }
+    }
+
+    /**
+     * Creates an SSL socket with the appropriate SSL configuration.
+     */
+    private SSLSocket createSSLSocket() throws Exception {
+        // Load the truststore that contains the trusted certificates
+        KeyStore trustStore = KeyStore.getInstance("JKS");
+        trustStore.load(new FileInputStream(TRUSTSTORE_PATH), TRUSTSTORE_PASSWORD.toCharArray());
+
+        // Create trust manager factory using the truststore
+        TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+        tmf.init(trustStore);
+
+        // Initialize SSLContext with the trust managers
+        SSLContext sslContext = SSLContext.getInstance(SSL_PROTOCOL);
+        sslContext.init(null, tmf.getTrustManagers(), null);
+
+        // Create the SSL socket factory
+        SSLSocketFactory socketFactory = sslContext.getSocketFactory();
+
+        // Create and configure the SSL socket
+        SSLSocket sslSocket = (SSLSocket) socketFactory.createSocket(serverAddress, serverPort);
+
+        // Configure SSL parameters if needed
+        // For example, you might want to specify which cipher suites or protocols are enabled
+        // Begin the SSL handshake
+        sslSocket.startHandshake();
+
+        return sslSocket;
     }
 
     private void readServerResponses() {

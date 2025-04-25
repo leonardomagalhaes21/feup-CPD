@@ -27,12 +27,20 @@ if [ $? -eq 0 ]; then
     # Default port and users file
     PORT=${1:-8888}
     USERS_FILE=${2:-"resources/main/users.txt"}
+    SSL_DEBUG=${3:-"false"}
     
     echo "Using port: $PORT"
     echo "Using users file: $USERS_FILE"
     
+    # Set SSL debug options if requested
+    SSL_OPTS=""
+    if [ "$SSL_DEBUG" = "true" ]; then
+        echo "SSL debugging enabled"
+        SSL_OPTS="-Djavax.net.debug=ssl,handshake"
+    fi
+    
     # Run the server with arguments (port number and users file)
-    java -cp out/production/assign2 chat.server.Server $PORT $USERS_FILE
+    java $SSL_OPTS -cp out/production/assign2 chat.server.Server $PORT $USERS_FILE
 else
     echo "Compilation failed. Please fix the errors and try again."
 fi

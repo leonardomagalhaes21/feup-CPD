@@ -1,26 +1,36 @@
 package chat.server;
 
 import chat.server.auth.AuthenticationService;
+import java.io.FileInputStream;
 import java.io.IOException;
-import java.net.ServerSocket;
 import java.net.Socket;
+import java.security.KeyStore;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLServerSocket;
+import javax.net.ssl.SSLServerSocketFactory;
 
 public class Server {
 
     private final int port;
     private final String userFilePath;
-    private ServerSocket serverSocket;
+    private SSLServerSocket serverSocket;
     private ExecutorService executor;
     private boolean isRunning;
     private AuthenticationService authService;
     private final Map<String, Room> rooms = new HashMap<>();
     private final ReadWriteLock roomsLock = new ReentrantReadWriteLock();
+
+    // SSL configuration
+    private static final String KEYSTORE_PATH = "resources/main/server.jks";
+    private static final String KEYSTORE_PASSWORD = "password";
+    private static final String SSL_PROTOCOL = "TLS";
 
     public Server(int port, String userFilePath) {
         this.port = port;
@@ -36,11 +46,12 @@ public class Server {
             createRoom("general");
             System.out.println("Created default room: general");
 
-            serverSocket = new ServerSocket(port);
+            // Setup SSL
+            serverSocket = createSSLServerSocket();
             executor = Executors.newVirtualThreadPerTaskExecutor();
             isRunning = true;
 
-            System.out.println("Server started on port " + port);
+            System.out.println("Secure server started on port " + port);
 
             // Accept client connections
             while (isRunning) {
@@ -56,9 +67,37 @@ public class Server {
                     }
                 }
             }
-        } catch (IOException e) {
+        } catch (Exception e) {
             System.err.println("Could not start server: " + e.getMessage());
+            e.printStackTrace();
         }
+    }
+
+    /**
+     * Creates an SSL server socket with the appropriate SSL configuration.
+     */
+    private SSLServerSocket createSSLServerSocket() throws Exception {
+        // Load the keystore that contains the server certificate
+        KeyStore keyStore = KeyStore.getInstance("JKS");
+        keyStore.load(new FileInputStream(KEYSTORE_PATH), KEYSTORE_PASSWORD.toCharArray());
+
+        // Create key manager factory using the keystore
+        KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+        kmf.init(keyStore, KEYSTORE_PASSWORD.toCharArray());
+
+        // Initialize SSLContext with the key managers
+        SSLContext sslContext = SSLContext.getInstance(SSL_PROTOCOL);
+        sslContext.init(kmf.getKeyManagers(), null, null);
+
+        // Create the SSL server socket factory
+        SSLServerSocketFactory socketFactory = sslContext.getServerSocketFactory();
+
+        // Create and configure the SSL server socket
+        SSLServerSocket sslServerSocket = (SSLServerSocket) socketFactory.createServerSocket(port);
+
+        // Configure SSL parameters if needed
+        // For example, you might want to specify which cipher suites or protocols are enabled
+        return sslServerSocket;
     }
 
     private void handleClient(Socket clientSocket) {
