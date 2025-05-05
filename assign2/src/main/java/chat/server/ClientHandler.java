@@ -22,6 +22,7 @@ public class ClientHandler {
     private boolean isAuthenticated = false;
     private static final int MAX_LOGIN_ATTEMPTS = 3;
     private static final int RECENT_MESSAGES_COUNT = 10;
+    private String sessionToken;
 
     public ClientHandler(Socket clientSocket, AuthenticationService authService, Server server) {
         this.clientSocket = clientSocket;
@@ -66,9 +67,60 @@ public class ClientHandler {
     private boolean authenticate() throws IOException {
         int attempts = 0;
         String line;
+        String pendingSessionToken = null;
 
         try {
             while (attempts < MAX_LOGIN_ATTEMPTS && (line = in.readLine()) != null) {
+                // First check if client sent a session token
+                if (line.startsWith("SESSION_TOKEN:")) {
+                    String[] parts = line.split(":", 2);
+                    if (parts.length == 2) {
+                        pendingSessionToken = parts[1].trim();
+                        System.out.println("Received session token from client");
+                        
+                        // Try to authenticate directly with the token
+                        String existingUsername = server.getSessionManager().validateSession(pendingSessionToken);
+                        if (existingUsername != null) {
+                            // Valid session token - authenticate user immediately
+                            username = existingUsername;
+                            sessionToken = pendingSessionToken;
+                            isAuthenticated = true;
+                            // Restore user's room if they were in one
+                            Room restoredRoom = server.getRoomForUser(username);
+
+                            if (restoredRoom != null) {
+                                System.out.println("Restoring room for user: " + username + " - Room: " + restoredRoom.getName());
+                                // Add client to the room
+                                restoredRoom.addMember(this);
+                                currentRoom = restoredRoom;
+                                
+                                out.println("AUTH_OK: Welcome back, " + username + "! You have been reconnected to room: " + restoredRoom.getName());
+                                
+                                // Send recent message history
+                                List<String> recentMessages = restoredRoom.getRecentMessages(RECENT_MESSAGES_COUNT);
+                                if (!recentMessages.isEmpty()) {
+                                    out.println("Recent messages:");
+                                    for (String message : recentMessages) {
+                                        out.println(message);
+                                    }
+                                }
+                                
+                                // Broadcast join message to other room members
+                                restoredRoom.broadcast("[" + username + " has reconnected to the room]", this);
+                            } else {
+                                out.println("AUTH_OK: Welcome back, " + username + "!");
+                            }
+                            
+                            System.out.println("User authenticated via session token: " + username);
+                            return true;
+                        } else {
+                            out.println("Your session has expired. Please login with username and password.");
+                        }
+                        continue;
+                    }
+                }
+                
+                // Process login command
                 if (line.startsWith("/login")) {
                     String[] parts = line.split("\\s+", 3);
 
@@ -80,18 +132,23 @@ public class ClientHandler {
 
                     username = parts[1];
                     String password = parts[2];
-
-                    if (authService.authenticate(username, password)) {
-                        isAuthenticated = true;
-                        out.println("AUTH_OK: Welcome, " + username + "!");
-                        System.out.println("User authenticated: " + username);
-                        return true;
-                    } else {
+                    
+                    // Check credentials
+                    if (!authService.authenticate(username, password)) {
                         out.println("AUTH_FAIL: Invalid credentials or user already logged in");
                         attempts++;
-                        // Reset username since authentication failed
-                        username = null;
+                        username = null; // Reset username since authentication failed
+                        continue;
                     }
+
+                    isAuthenticated = true;
+
+                    // Create new session token
+                    sessionToken = server.getSessionManager().createSession(username);
+                    out.println("AUTH_OK: Welcome, " + username + "! Your session token: " + sessionToken);
+
+                    System.out.println("User authenticated with credentials: " + username);
+                    return true;
                 } else {
                     out.println("AUTH_FAIL: Please login first using: /login <username> <password>");
                     attempts++;
@@ -112,7 +169,10 @@ public class ClientHandler {
 
     private void processCommands() throws IOException {
         String line;
-        sendHelp();
+        
+        if (currentRoom == null) {
+            sendHelp();
+        }
 
         try {
             while ((line = in.readLine()) != null) {
@@ -144,7 +204,11 @@ public class ClientHandler {
                                 break;
                             case "/leave":
                                 leaveCurrentRoom();
+                                server.setRoomForUser(username, null);
                                 break;
+                            case "/logout":
+                                handleLogout();
+                                return;
                             case "/exit":
                                 out.println("Goodbye! Disconnecting...");
                                 return;
@@ -269,6 +333,9 @@ public class ClientHandler {
         // Add client to the room
         room.addMember(this);
         currentRoom = room;
+        
+        // Track the user's room for reconnection
+        server.setRoomForUser(username, room);
 
         // Confirm to client
         StringBuilder joinMessage = new StringBuilder();
@@ -332,6 +399,7 @@ public class ClientHandler {
         out.println("/create <roomname> <ai_prompt> - Create a new AI room with specified prompt");
         out.println("/join <roomname> - Join an existing room");
         out.println("/leave - Leave current room");
+        out.println("/logout - Log out current user");
         out.println("/exit - Disconnect from the server");
         out.println("/help - Show this help message");
         out.println("");
@@ -371,5 +439,43 @@ public class ClientHandler {
      */
     public boolean isConnected() {
         return clientSocket != null && !clientSocket.isClosed() && clientSocket.isConnected();
+    }
+
+    private void handleLogout() {
+        if (isAuthenticated && username != null) {
+            leaveCurrentRoom();
+            
+            // Invalidate the session token
+            if (sessionToken != null) {
+                server.getSessionManager().invalidateSession(sessionToken);
+                sessionToken = null;
+            }
+            
+            // Log the user out on the authentication service
+            authService.logout(username);
+            
+            // Clear room association
+            server.setRoomForUser(username, null);
+            
+            // Reset client state
+            isAuthenticated = false;
+            
+            System.out.println("User logged out: " + username);
+            out.println("You have been logged out. Please login again with /login <username> <password>");
+            
+            // Reset username last
+            username = null;
+            
+            // Restart the authentication process
+            try {
+                if (authenticate()) {
+                    processCommands();
+                }
+            } catch (IOException e) {
+                System.err.println("Error during re-authentication after logout: " + e.getMessage());
+            }
+        } else {
+            out.println("You are not currently logged in.");
+        }
     }
 }

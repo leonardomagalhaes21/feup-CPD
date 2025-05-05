@@ -1,6 +1,8 @@
 package chat.server;
 
 import chat.server.auth.AuthenticationService;
+import chat.server.auth.SessionManager;
+
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.Socket;
@@ -29,6 +31,9 @@ public class Server {
     private AuthenticationService authService;
     private final Map<String, Room> rooms = new HashMap<>();
     private final ReadWriteLock roomsLock = new ReentrantReadWriteLock();
+
+    private final SessionManager sessionManager = new SessionManager();
+    private final Map<String, Room> userSessionRooms = new HashMap<>();
 
     // SSL configuration
     private static final String KEYSTORE_PATH = "resources/main/server.jks";
@@ -211,6 +216,23 @@ public class Server {
         } finally {
             roomsLock.readLock().unlock();
         }
+    }
+
+
+
+    public Room getRoomForUser(String user) {
+        return userSessionRooms.get(user);
+    }
+
+    public void setRoomForUser(String user, Room room) {
+        if (user == null) {
+            throw new IllegalArgumentException("User cannot be null");
+        }
+        userSessionRooms.put(user, room);
+    }
+
+    public SessionManager getSessionManager() {
+        return sessionManager;
     }
 
     public void stop() {

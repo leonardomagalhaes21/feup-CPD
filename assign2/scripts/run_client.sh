@@ -35,6 +35,48 @@ fi
 # Create output directory if it doesn't exist
 mkdir -p out/production/assign2
 
+# Default values
+SERVER="localhost"
+PORT=8888
+CLIENT_ID="default"
+SSL_DEBUG="false"
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -C|--client-id)
+            CLIENT_ID="$2"
+            shift 2
+            ;;
+        -s|--server)
+            SERVER="$2"
+            shift 2
+            ;;
+        -p|--port)
+            PORT="$2"
+            shift 2
+            ;;
+        -d|--debug)
+            SSL_DEBUG="true"
+            shift
+            ;;
+        # Handle positional arguments (for backward compatibility)
+        *)
+            if [[ -z "$POS1" ]]; then
+                POS1="$1"
+                SERVER="$POS1"
+            elif [[ -z "$POS2" ]]; then
+                POS2="$1"
+                PORT="$POS2"
+            elif [[ -z "$POS3" ]]; then
+                POS3="$1"
+                CLIENT_ID="$POS3"
+            fi
+            shift
+            ;;
+    esac
+done
+
 # Compile the code
 echo "Compiling client code..."
 javac -d out/production/assign2 src/main/java/chat/client/*.java
@@ -43,12 +85,8 @@ javac -d out/production/assign2 src/main/java/chat/client/*.java
 if [ $? -eq 0 ]; then
     echo "Compilation successful. Starting client..."
     
-    # Default server address and port
-    SERVER=${1:-"localhost"}
-    PORT=${2:-8888}
-    SSL_DEBUG=${3:-"false"}
-    
     echo "Connecting to: $SERVER:$PORT"
+    echo "Using client ID: $CLIENT_ID"
     
     # Set SSL debug options if requested
     SSL_OPTS=""
@@ -58,7 +96,7 @@ if [ $? -eq 0 ]; then
     fi
     
     # Run the client with arguments
-    java $SSL_OPTS -cp out/production/assign2 chat.client.Client $SERVER $PORT
+    java $SSL_OPTS -cp out/production/assign2 chat.client.Client $SERVER $PORT $CLIENT_ID
 else
     echo "Compilation failed. Please fix the errors and try again."
 fi

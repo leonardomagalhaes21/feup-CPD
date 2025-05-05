@@ -7,6 +7,9 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.ConnectException;
 import java.net.SocketException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.KeyStore;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -27,23 +30,34 @@ public class Client {
     private BufferedReader consoleIn;
     private final AtomicBoolean isRunning = new AtomicBoolean(false);
     private final AtomicBoolean isAuthenticated = new AtomicBoolean(false);
+    private final AtomicBoolean isInRoom = new AtomicBoolean(false);
     private ExecutorService executor;
     private String username;
+    private String sessionToken;
+    
+    // Client ID for session file
+    private final String clientId;
+    private static final String SESSION_FILE_FORMAT = "resources/main/client_session_%s.txt";
 
     // SSL configuration
     private static final String TRUSTSTORE_PATH = "resources/main/client_truststore.jks";
     private static final String TRUSTSTORE_PASSWORD = "password";
     private static final String SSL_PROTOCOL = "TLS";
 
-    public Client(String serverAddress, int serverPort) {
+    public Client(String serverAddress, int serverPort, String clientId) {
         this.serverAddress = serverAddress;
         this.serverPort = serverPort;
         this.consoleIn = new BufferedReader(new InputStreamReader(System.in));
+        this.clientId = clientId != null ? clientId : "default";
     }
 
     public void start() {
         try {
+            // Try to load a previous session token
+            loadSession();
+            
             System.out.println("Connecting to server at " + serverAddress + ":" + serverPort + "...");
+            System.out.println("Client ID: " + clientId);
 
             try {
                 // Connect to the server using SSL
@@ -72,8 +86,16 @@ public class Client {
 
             // Wait for initial server welcome message
             Thread.sleep(500);
+            
+            // Try to authenticate with session token if we have one
+            if (sessionToken != null && !sessionToken.isEmpty()) {
+                System.out.println("Attempting to authenticate with saved session token...");
+                out.println("SESSION_TOKEN:" + sessionToken);
+                // Wait a moment to see if authentication succeeds
+                Thread.sleep(1000);
+            }
 
-            // Authentication loop
+            // Authentication loop if not yet authenticated
             while (isRunning.get() && !isAuthenticated.get()) {
                 try {
                     System.out.print("Please login (/login username password): ");
@@ -115,11 +137,14 @@ public class Client {
 
             // Main thread reads user input and sends to server if authenticated
             if (isAuthenticated.get()) {
-                System.out.println("\n============================================");
-                System.out.println("You are now logged in as " + username);
-                System.out.println("Type /help to see available commands");
-                System.out.println("Type /exit to disconnect from the server");
-                System.out.println("============================================\n");
+                // Only display the login banner if we have a username and are not already in a room
+                if (username != null && !username.isEmpty() && !isInRoom.get()) {
+                    System.out.println("\n============================================");
+                    System.out.println("You are now logged in as " + username);
+                    System.out.println("Type /help to see available commands");
+                    System.out.println("Type /exit to disconnect from the server");
+                    System.out.println("============================================\n");
+                }
 
                 String userInput;
                 while (isRunning.get() && (userInput = consoleIn.readLine()) != null) {
@@ -142,6 +167,39 @@ public class Client {
         } finally {
             shutdown();
         }
+    }
+
+    private void loadSession() {
+        try {
+            Path sessionFilePath = getSessionFilePath();
+            if (Files.exists(sessionFilePath)) {
+                sessionToken = Files.readString(sessionFilePath).trim();
+                if (!sessionToken.isEmpty()) {
+                    System.out.println("Found saved session token for client ID: " + clientId);
+                }
+            }
+        } catch (IOException e) {
+            System.err.println("Failed to load session: " + e.getMessage());
+        }
+    }
+
+    private void saveSession() {
+        if (sessionToken == null) {
+            return;
+        }
+        
+        try {
+            Path sessionFilePath = getSessionFilePath();
+            Files.createDirectories(sessionFilePath.getParent());
+            Files.writeString(sessionFilePath, sessionToken);
+            System.out.println("Session token saved for client ID: " + clientId);
+        } catch (IOException e) {
+            System.err.println("Failed to save session: " + e.getMessage());
+        }
+    }
+
+    private Path getSessionFilePath() {
+        return Paths.get(String.format(SESSION_FILE_FORMAT, clientId));
     }
 
     /**
@@ -187,6 +245,34 @@ public class Client {
                 // Check for authentication responses
                 if (response.startsWith("AUTH_OK:")) {
                     isAuthenticated.set(true);
+                    
+                    // Check if we're automatically placed in a room (reconnection case)
+                    if (response.contains("reconnected to room:") || response.contains("joined room")) {
+                        isInRoom.set(true);
+                    }
+                    
+                    // Extract username from the welcome message
+                    if (response.contains("Welcome back, ")) {
+                        String[] parts = response.split("Welcome back, ");
+                        if (parts.length > 1) {
+                            String userPart = parts[1];
+                            // Extract username up to the next punctuation or space
+                            int endIndex = userPart.indexOf('!');
+                            if (endIndex > 0) {
+                                this.username = userPart.substring(0, endIndex);
+                            }
+                        }
+                    }
+                    
+                    // Extract session token from authentication response if present
+                    if (response.contains("Your session token:")) {
+                        String[] parts = response.split("Your session token: ");
+                        if (parts.length > 1) {
+                            sessionToken = parts[1].trim();
+                            saveSession();
+                        }
+                    }
+                    
                     System.out.println(response);
                 } else if (response.startsWith("AUTH_FAIL:")) {
                     System.out.println(response);
@@ -195,6 +281,13 @@ public class Client {
                         shutdown();
                     }
                 } else {
+                    // Track room join/leave events
+                    if (response.startsWith("You joined room:")) {
+                        isInRoom.set(true);
+                    } else if (response.startsWith("You left room:")) {
+                        isInRoom.set(false);
+                    }
+                    
                     // Display the server message
                     System.out.println(response);
                 }
@@ -270,6 +363,7 @@ public class Client {
     public static void main(String[] args) {
         String serverAddress = "localhost";
         int serverPort = 8888;
+        String clientId = "default";
 
         // Parse command-line arguments if provided
         if (args.length >= 1) {
@@ -282,8 +376,11 @@ public class Client {
                 System.err.println("Invalid port number. Using default port 8888.");
             }
         }
+        if (args.length >= 3) {
+            clientId = args[2];
+        }
 
-        Client client = new Client(serverAddress, serverPort);
+        Client client = new Client(serverAddress, serverPort, clientId);
         client.start();
     }
 }

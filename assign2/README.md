@@ -84,10 +84,11 @@ Default port is 5000 if not specified.
 ### Start a Client
 
 ```bash
-./scripts/run_client.sh [server_address] [port]
+./scripts/run_client.sh [server_address] [port] [-C <client_id>]
 ```
 
 Default server address is localhost and default port is 5000 if not specified.
+The optional `-C` parameter allows specifying a client ID, which can be used for multiple clients on the same machine.
 
 ## Client Commands
 
@@ -95,6 +96,7 @@ Once connected to the server:
 
 ### Authentication
 - `login <username> <password>` - Authenticate with the server
+- `/logout` - Log out current user and authenticate as a different user
 
 ### Room Management
 - `list` - List all available chat rooms

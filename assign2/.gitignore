@@ -29,3 +29,9 @@ bin/
 .DS_Store
 
 copilot-context.md
+
+### Security ###
+*.jks
+*.keystore
+*.p12
+*.pfx
