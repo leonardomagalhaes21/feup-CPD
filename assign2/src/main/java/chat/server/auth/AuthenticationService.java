@@ -5,12 +5,16 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.HashMap;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class AuthenticationService {
 
-    private final Map<String, String> userCredentials = new ConcurrentHashMap<>();
-    private final Map<String, Boolean> loggedInUsers = new ConcurrentHashMap<>();
+    private final Map<String, String> userCredentials = new HashMap<>();
+    private final ReadWriteLock credentialsLock = new ReentrantReadWriteLock();
+    private final Map<String, Boolean> loggedInUsers = new HashMap<>();
+    private final ReadWriteLock loggedInUsersLock = new ReentrantReadWriteLock();
 
     /**
      * Creates a new authentication service and loads users from the specified
@@ -41,12 +45,22 @@ public class AuthenticationService {
 
                 String[] parts = line.split(":", 2);
                 if (parts.length == 2) {
-                    userCredentials.put(parts[0], parts[1]);
+                    credentialsLock.writeLock().lock();
+                    try {
+                        userCredentials.put(parts[0], parts[1]);
+                    } finally {
+                        credentialsLock.writeLock().unlock();
+                    }
                 }
             }
         }
 
-        System.out.println("Loaded " + userCredentials.size() + " user(s) from " + filePath);
+        credentialsLock.readLock().lock();
+        try {
+            System.out.println("Loaded " + userCredentials.size() + " user(s) from " + filePath);
+        } finally {
+            credentialsLock.readLock().unlock();
+        }
     }
 
     /**
@@ -58,17 +72,37 @@ public class AuthenticationService {
      */
     public boolean authenticate(String username, String password) {
         // Check if user exists and password matches
-        if (userCredentials.containsKey(username)
-                && userCredentials.get(username).equals(password)) {
+        credentialsLock.readLock().lock();
+        boolean credentialsMatch;
+        try {
+            credentialsMatch = userCredentials.containsKey(username)
+                    && userCredentials.get(username).equals(password);
+        } finally {
+            credentialsLock.readLock().unlock();
+        }
 
+        if (credentialsMatch) {
             // Check if user is already logged in
-            if (loggedInUsers.getOrDefault(username, false)) {
+            loggedInUsersLock.readLock().lock();
+            boolean alreadyLoggedIn;
+            try {
+                alreadyLoggedIn = loggedInUsers.getOrDefault(username, false);
+            } finally {
+                loggedInUsersLock.readLock().unlock();
+            }
+
+            if (alreadyLoggedIn) {
                 System.out.println("User " + username + " is already logged in");
                 return false;
             }
 
             // Mark user as logged in
-            loggedInUsers.put(username, true);
+            loggedInUsersLock.writeLock().lock();
+            try {
+                loggedInUsers.put(username, true);
+            } finally {
+                loggedInUsersLock.writeLock().unlock();
+            }
             return true;
         }
 
@@ -81,7 +115,12 @@ public class AuthenticationService {
      * @param username The username to log out
      */
     public void logout(String username) {
-        loggedInUsers.put(username, false);
+        loggedInUsersLock.writeLock().lock();
+        try {
+            loggedInUsers.put(username, false);
+        } finally {
+            loggedInUsersLock.writeLock().unlock();
+        }
     }
 
     /**
@@ -91,6 +130,11 @@ public class AuthenticationService {
      * @return true if the user exists, false otherwise
      */
     public boolean userExists(String username) {
-        return userCredentials.containsKey(username);
+        credentialsLock.readLock().lock();
+        try {
+            return userCredentials.containsKey(username);
+        } finally {
+            credentialsLock.readLock().unlock();
+        }
     }
 }
