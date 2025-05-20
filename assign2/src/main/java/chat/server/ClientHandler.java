@@ -326,8 +326,8 @@ public class ClientHandler {
         Room room = server.getRoom(roomName);
 
         if (room == null) {
-            out.println("ERROR: Room '" + roomName + "' does not exist");
-            return;
+            room = server.createRoom(roomName);
+            out.println("Room '" + roomName + "' did not exist. Created it automatically for you.");
         }
 
         // Add client to the room
