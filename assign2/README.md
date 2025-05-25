@@ -54,8 +54,8 @@ To use Ollama in a Docker container for AI functionality:
 docker pull ollama/ollama
 docker run -d -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama
 
-# Pull a model (e.g., Llama 2)
-docker exec -it ollama ollama pull llama2
+# Pull a model (e.g., Llama 3)
+docker exec -it ollama ollama pull llama3
 
 # Verify Ollama server is running
 curl http://localhost:11434/api/tags
@@ -180,7 +180,9 @@ javac -d bin src/main/java/chat/client/*.java src/main/java/chat/server/*.java s
 │       ├── ai/
 │       │   └── OllamaService.java
 │       └── auth/
-│           └── AuthenticationService.java
+│           ├── AuthenticationService.java
+│           ├── Session.java
+│           └── SessionManager.java
 ├── resources/
 │   └── main/
 │       ├── users.txt
